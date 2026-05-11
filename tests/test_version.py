@@ -3,11 +3,11 @@
 from guidewire import __version__
 
 
-def test_version_is_semver() -> None:
-    """Version should follow major.minor.patch format."""
-    parts = __version__.split(".")
-    assert len(parts) == 3
-    assert all(p.isdigit() for p in parts)
+def test_version_is_pep440() -> None:
+    """Version should follow PEP 440 format (e.g. 0.0.1.dev0)."""
+    import re
+
+    assert re.match(r"\d+\.\d+\.\d+(?:\.dev\d+)?", __version__)
 
 
 def test_package_importable() -> None:
