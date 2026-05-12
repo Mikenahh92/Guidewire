@@ -1,0 +1,32 @@
+"""Backend abstraction layer for the Guidewire Desktop Accessibility MCP server.
+
+This package defines the :class:`DesktopBackend` abstract base class that every
+platform backend must implement.  A :class:`MockBackend` test double is provided
+for unit testing without a real platform backend.
+
+Public API re-exports:
+    DesktopBackend  — ABC with 8 canonical synchronous methods (§4.1)
+    MockBackend     — in-memory test double with fluent builder API (§5)
+    NativeHandle    — opaque platform handle alias (§3)
+    ElementState    — 9 boolean state flags (§3.2)
+    ElementBounds   — bounding rectangle dataclass (§3)
+    DesktopAction   — StrEnum of 12 supported actions (§4.3)
+"""
+
+from guidewire.backends.base import DesktopBackend
+from guidewire.backends.mock import MockBackend
+from guidewire.backends.types import (
+    DesktopAction,
+    ElementBounds,
+    ElementState,
+    NativeHandle,
+)
+
+__all__ = [
+    "DesktopAction",
+    "DesktopBackend",
+    "ElementBounds",
+    "ElementState",
+    "MockBackend",
+    "NativeHandle",
+]
