@@ -1,13 +1,21 @@
-"""Entry point for the Guidewire MCP server."""
+"""Entry point for the Guidewire MCP server (PRD R1).
 
-import sys
+Wires stdio transport so that MCP clients can communicate with the
+server over the standard input/output streams::
+
+    python -m guidewire
+"""
+
+from guidewire.server import GuidewireServer
+
+__all__ = ["main"]
 
 
 def main() -> None:
-    """Run the Guidewire MCP server."""
-    print(f"guidewire v{__import__('guidewire').__version__}", file=sys.stderr)
-    print("MCP server not yet implemented — scaffold only.", file=sys.stderr)
-    sys.exit(0)
+    """Run the Guidewire MCP server with stdio transport."""
+    server = GuidewireServer()
+    server.register_tools()
+    server.run()
 
 
 if __name__ == "__main__":
