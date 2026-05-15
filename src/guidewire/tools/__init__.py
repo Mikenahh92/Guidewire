@@ -22,9 +22,10 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
 
+from guidewire.refs import ElementRefStore
+
 if TYPE_CHECKING:
     from guidewire.backends.base import DesktopBackend
-    from guidewire.refs import ElementRefStore
 
 __all__ = ["register_all"]
 
@@ -39,6 +40,9 @@ _TOOL_MODULES = [
     ".press_key",
     ".get_text",
 ]
+
+# Modules whose ``register()`` accepts an optional backend argument.
+_BACKEND_TOOL_MODULES: frozenset[str] = frozenset({".list_windows"})
 
 
 def register_all(

@@ -166,9 +166,13 @@ class TestToolStubBehaviour:
     """Tests for tool stub invocation — stubs return static placeholder responses."""
 
     async def test_list_windows_returns_empty_array(self, server):
-        """desktop.list_windows should return '[]'."""
+        """desktop.list_windows should return wrapped dict with empty windows."""
         result, _meta = await server.mcp.call_tool("desktop.list_windows", arguments={})
-        assert result[0].text == "[]"
+        import json
+        data = json.loads(result[0].text)
+        assert isinstance(data, dict)
+        assert data["windows"] == []
+        assert data["count"] == 0
 
     async def test_focus_window_returns_confirmation(self, server):
         """desktop.focus_window should return a confirmation message."""

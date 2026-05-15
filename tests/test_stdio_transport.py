@@ -47,8 +47,12 @@ class TestStdioTransport:
 
     async def test_server_tools_callable_via_mcp(self):
         """Registered tools should be callable through the MCP layer."""
+        import json
+
         server = GuidewireServer()
         server.register_tools()
         result, _meta = await server.mcp.call_tool("desktop.list_windows", arguments={})
         assert len(result) == 1
-        assert result[0].text == "[]"
+        data = json.loads(result[0].text)
+        assert isinstance(data, dict)
+        assert data["windows"] == []
