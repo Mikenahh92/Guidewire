@@ -42,7 +42,7 @@ class TestABCBase:
 
 
 class TestAbstractMethodsPresent:
-    """TC-03: Exactly 8 abstract methods must be declared."""
+    """TC-03: Exactly 9 abstract methods must be declared."""
 
     EXPECTED_METHODS = frozenset(
         {
@@ -52,6 +52,7 @@ class TestAbstractMethodsPresent:
             "snapshot",
             "find_elements",
             "perform_action",
+            "get_element_info",
             "is_valid",
             "dispose",
         }
@@ -71,7 +72,7 @@ class TestAbstractMethodsPresent:
             for name, method in inspect.getmembers(DesktopBackend, predicate=inspect.isfunction)
             if getattr(method, "__isabstractmethod__", False)
         ]
-        assert len(abstracts) == 8
+        assert len(abstracts) == 9
 
 
 # -- TC-04: list_windows signature ------------------------------------------
@@ -169,7 +170,7 @@ class TestPerformActionSignature:
 
 
 class TestMinimalSubclass:
-    """TC-10: A subclass implementing all 8 methods should be instantiable."""
+    """TC-10: A subclass implementing all 9 methods should be instantiable."""
 
     def test_subclass_instantiation(self) -> None:
         class MinimalBackend(DesktopBackend):
@@ -194,6 +195,9 @@ class TestMinimalSubclass:
 
             def perform_action(self, handle, action, **kwargs):
                 return None
+
+            def get_element_info(self, handle):
+                return {"role": "element", "name": None, "states": {}}
 
             def is_valid(self, element) -> bool:
                 return False

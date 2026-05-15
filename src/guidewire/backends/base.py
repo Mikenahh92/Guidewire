@@ -146,6 +146,21 @@ class DesktopBackend(ABC):
         """
 
     @abstractmethod
+    def get_element_info(self, handle: NativeHandle) -> dict[str, Any]:
+        """Return element metadata as a dict.
+
+        Args:
+            handle: Opaque native element handle.
+
+        Returns:
+            Dict with keys ``role`` (str), ``name`` (str | None),
+            ``states`` (dict of state flags).
+
+        Raises:
+            ElementNotFoundError: If the handle is not known.
+        """
+
+    @abstractmethod
     def is_valid(self, element: NativeHandle) -> bool:
         """Check whether a native element reference is still valid.
 

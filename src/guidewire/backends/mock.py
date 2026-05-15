@@ -322,6 +322,21 @@ class MockBackend(DesktopBackend):
             return e.value or ""
         return None
 
+    def get_element_info(self, handle: NativeHandle) -> dict[str, Any]:
+        """Return element metadata as a dict."""
+        if handle not in self._elements:
+            raise ElementNotFoundError(f"Element handle {handle!r} not found")
+        e = self._elements[handle]
+        if not e.valid:
+            from guidewire.errors import StaleElementReferenceError
+
+            raise StaleElementReferenceError(f"Element handle {handle!r} is stale")
+        return {
+            "role": e.role,
+            "name": e.name,
+            "states": asdict(e.states),
+        }
+
     def is_valid(self, element: NativeHandle) -> bool:
         """Check whether a mock element or window reference is still valid."""
         if element in self._windows:

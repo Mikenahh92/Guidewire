@@ -220,9 +220,9 @@ class TestToolStubBehaviour:
         assert "Enter" in result[0].text
         assert "Pressed" in result[0].text
 
-    async def test_get_text_returns_empty_string(self, server):
-        """desktop.get_text should return an empty string."""
+    async def test_get_text_returns_stub_message(self, server):
+        """desktop.get_text should return a stub message when no backend is wired."""
         result, _meta = await server.mcp.call_tool(
             "desktop.get_text", arguments={"element_ref": "e1"}
         )
-        assert result[0].text == ""
+        assert "e1" in result[0].text
