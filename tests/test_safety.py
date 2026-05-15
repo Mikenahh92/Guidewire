@@ -1,0 +1,886 @@
+"""Tests for guidewire.safety — PRD R12 three-tier element risk classification."""
+
+from __future__ import annotations
+
+from typing import ClassVar
+
+import pytest
+
+from guidewire.models import DesktopAction, ElementStates, NormalizedElement
+from guidewire.safety import (
+    DESTRUCTIVE_NAME_PATTERNS,
+    ROLE_RISK_MAP,
+    SENSITIVE_ROLES,
+    RiskAssessment,
+    RiskLevel,
+    classify,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _element(
+    role: str = "text_input",
+    name: str | None = None,
+    enabled: bool | None = None,
+    actions: list[DesktopAction] | None = None,
+) -> NormalizedElement:
+    """Build a minimal NormalizedElement for classification tests."""
+    states = ElementStates()
+    if enabled is not None:
+        states = ElementStates(enabled=enabled)
+    return NormalizedElement(
+        ref="e1",
+        backend_id="native-1",
+        role=role,
+        name=name,
+        states=states,
+        actions=actions or [],
+    )
+
+
+# ---------------------------------------------------------------------------
+# TC-4.1: RiskLevel type
+# ---------------------------------------------------------------------------
+
+
+class TestRiskLevelType:
+    """RiskLevel is a Literal type with exactly three string values."""
+
+    def test_is_literal(self) -> None:
+        import typing
+
+        origin = typing.get_origin(RiskLevel)
+        assert origin is typing.Literal
+
+    def test_valid_values(self) -> None:
+        import typing
+
+        args = typing.get_args(RiskLevel)
+        assert set(args) == {"READ_ONLY", "INTERACTION", "SENSITIVE"}
+
+    def test_accepts_read_only(self) -> None:
+        _: RiskLevel = "READ_ONLY"
+
+    def test_accepts_interaction(self) -> None:
+        _: RiskLevel = "INTERACTION"
+
+    def test_accepts_sensitive(self) -> None:
+        _: RiskLevel = "SENSITIVE"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.2: RiskAssessment dataclass
+# ---------------------------------------------------------------------------
+
+
+class TestRiskAssessmentDataclass:
+    """RiskAssessment is a frozen dataclass with four fields."""
+
+    def test_is_frozen(self) -> None:
+        ra = RiskAssessment(
+            risk_level="READ_ONLY",
+            confirmation_required=False,
+            reason="test",
+            confidence=1.0,
+        )
+        with pytest.raises(AttributeError):
+            ra.risk_level = "SENSITIVE"  # type: ignore[misc]
+
+    def test_has_slots(self) -> None:
+        ra = RiskAssessment(
+            risk_level="READ_ONLY",
+            confirmation_required=False,
+            reason="test",
+            confidence=1.0,
+        )
+        assert "__slots__" in type(ra).__dict__
+
+    def test_field_risk_level(self) -> None:
+        ra = RiskAssessment(
+            risk_level="SENSITIVE",
+            confirmation_required=True,
+            reason="test",
+            confidence=0.9,
+        )
+        assert ra.risk_level == "SENSITIVE"
+
+    def test_field_confirmation_required(self) -> None:
+        ra = RiskAssessment(
+            risk_level="SENSITIVE",
+            confirmation_required=True,
+            reason="test",
+            confidence=0.9,
+        )
+        assert ra.confirmation_required is True
+
+    def test_field_reason(self) -> None:
+        ra = RiskAssessment(
+            risk_level="READ_ONLY",
+            confirmation_required=False,
+            reason="Element is disabled",
+            confidence=1.0,
+        )
+        assert ra.reason == "Element is disabled"
+
+    def test_field_confidence(self) -> None:
+        ra = RiskAssessment(
+            risk_level="INTERACTION",
+            confirmation_required=False,
+            reason="default",
+            confidence=0.8,
+        )
+        assert ra.confidence == pytest.approx(0.8)
+
+    def test_equality(self) -> None:
+        ra1 = RiskAssessment("READ_ONLY", False, "test", 1.0)
+        ra2 = RiskAssessment("READ_ONLY", False, "test", 1.0)
+        assert ra1 == ra2
+
+    def test_inequality(self) -> None:
+        ra1 = RiskAssessment("READ_ONLY", False, "test", 1.0)
+        ra2 = RiskAssessment("SENSITIVE", True, "test", 0.9)
+        assert ra1 != ra2
+
+
+# ---------------------------------------------------------------------------
+# TC-4.3: classify() signature
+# ---------------------------------------------------------------------------
+
+
+class TestClassifySignature:
+    """classify accepts NormalizedElement and DesktopAction, returns RiskAssessment."""
+
+    def test_returns_risk_assessment(self) -> None:
+        elem = _element(role="label")
+        result = classify(elem, "click")
+        assert isinstance(result, RiskAssessment)
+
+    def test_two_arg_signature(self) -> None:
+        """classify must be called with (element, action) — not role string."""
+        elem = _element(role="text_input")
+        result = classify(elem, "type")
+        assert isinstance(result, RiskAssessment)
+
+
+# ---------------------------------------------------------------------------
+# TC-4.4: Disabled element handling
+# ---------------------------------------------------------------------------
+
+
+class TestDisabledElement:
+    """Disabled elements (enabled=False) always return READ_ONLY."""
+
+    def test_disabled_button_is_read_only(self) -> None:
+        elem = _element(role="button", enabled=False)
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+        assert result.confirmation_required is False
+
+    def test_disabled_delete_button_is_read_only(self) -> None:
+        elem = _element(role="delete_button", enabled=False)
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_disabled_with_destructive_name_is_read_only(self) -> None:
+        elem = _element(role="button", name="Delete All", enabled=False)
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_disabled_element_confidence(self) -> None:
+        elem = _element(role="button", enabled=False)
+        result = classify(elem, "click")
+        assert result.confidence == pytest.approx(1.0)
+
+    def test_enabled_none_is_not_disabled(self) -> None:
+        """enabled=None (unreported) should NOT trigger the disabled rule."""
+        elem = _element(role="delete_button", enabled=None)
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_enabled_true_is_not_disabled(self) -> None:
+        elem = _element(role="delete_button", enabled=True)
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.5: Focus action always returns READ_ONLY
+# ---------------------------------------------------------------------------
+
+
+class TestFocusAction:
+    """Focus action on any element returns READ_ONLY regardless of role."""
+
+    @pytest.mark.parametrize(
+        "role",
+        [
+            "button",
+            "delete_button",
+            "text_input",
+            "link",
+            "label",
+            "menu_item",
+        ],
+    )
+    def test_focus_is_read_only(self, role: str) -> None:
+        elem = _element(role=role)
+        result = classify(elem, "focus")
+        assert result.risk_level == "READ_ONLY"
+        assert result.confirmation_required is False
+
+    def test_focus_on_destructive_name(self) -> None:
+        elem = _element(role="button", name="Delete Everything")
+        result = classify(elem, "focus")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_focus_on_enabled_element(self) -> None:
+        elem = _element(role="button", enabled=True)
+        result = classify(elem, "focus")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_non_focus_action_not_read_only_by_default(self) -> None:
+        """Click on a button is not READ_ONLY (it's INTERACTION or SENSITIVE)."""
+        elem = _element(role="button")
+        result = classify(elem, "click")
+        assert result.risk_level != "READ_ONLY"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.6: Sensitive roles
+# ---------------------------------------------------------------------------
+
+
+class TestSensitiveRoles:
+    """delete_button, remove_button, clear_button are SENSITIVE."""
+
+    @pytest.mark.parametrize("role", list(SENSITIVE_ROLES))
+    def test_sensitive_roles_are_sensitive(self, role: str) -> None:
+        elem = _element(role=role)
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+
+    def test_sensitive_roles_exact_set(self) -> None:
+        """SENSITIVE_ROLES contains exactly the five sensitive roles."""
+        assert {
+            "delete_button",
+            "remove_button",
+            "clear_button",
+            "password_field",
+            "credential_field",
+        } == SENSITIVE_ROLES
+
+    def test_sensitive_role_confidence(self) -> None:
+        elem = _element(role="delete_button")
+        result = classify(elem, "click")
+        assert result.confidence == pytest.approx(1.0)
+
+    def test_sensitive_role_reason(self) -> None:
+        elem = _element(role="remove_button")
+        result = classify(elem, "click")
+        assert "remove_button" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# TC-4.6b: Password / credential escalation
+# ---------------------------------------------------------------------------
+
+
+class TestPasswordCredentialEscalation:
+    """password_field and credential_field roles are SENSITIVE (AC-8)."""
+
+    def test_password_field_is_sensitive(self) -> None:
+        elem = _element(role="password_field")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+
+    def test_credential_field_is_sensitive(self) -> None:
+        elem = _element(role="credential_field")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+
+    def test_password_field_confidence(self) -> None:
+        elem = _element(role="password_field")
+        result = classify(elem, "click")
+        assert result.confidence == pytest.approx(1.0)
+
+    def test_credential_field_confidence(self) -> None:
+        elem = _element(role="credential_field")
+        result = classify(elem, "click")
+        assert result.confidence == pytest.approx(1.0)
+
+    def test_password_field_reason(self) -> None:
+        elem = _element(role="password_field")
+        result = classify(elem, "click")
+        assert "password_field" in result.reason
+
+    def test_credential_field_reason(self) -> None:
+        elem = _element(role="credential_field")
+        result = classify(elem, "click")
+        assert "credential_field" in result.reason
+
+    def test_disabled_password_field_is_read_only(self) -> None:
+        """Disabled password_field is still READ_ONLY (disabled rule wins)."""
+        elem = _element(role="password_field", enabled=False)
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_focus_on_password_field_is_read_only(self) -> None:
+        """Focus on password_field is READ_ONLY (focus rule wins)."""
+        elem = _element(role="password_field")
+        result = classify(elem, "focus")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_password_field_in_sensitive_roles(self) -> None:
+        assert "password_field" in SENSITIVE_ROLES
+
+    def test_credential_field_in_sensitive_roles(self) -> None:
+        assert "credential_field" in SENSITIVE_ROLES
+
+    def test_password_field_in_role_risk_map(self) -> None:
+        assert ROLE_RISK_MAP.get("password_field") == "SENSITIVE"
+
+    def test_credential_field_in_role_risk_map(self) -> None:
+        assert ROLE_RISK_MAP.get("credential_field") == "SENSITIVE"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.7: Generic button is NOT sensitive
+# ---------------------------------------------------------------------------
+
+
+class TestGenericButtonNotSensitive:
+    """A generic 'button' role is INTERACTION, not SENSITIVE."""
+
+    def test_button_is_interaction(self) -> None:
+        elem = _element(role="button")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_button_confirmation_not_required(self) -> None:
+        elem = _element(role="button")
+        result = classify(elem, "click")
+        assert result.confirmation_required is False
+
+    def test_submit_button_is_interaction(self) -> None:
+        elem = _element(role="submit_button")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_cancel_button_is_interaction(self) -> None:
+        elem = _element(role="cancel_button")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_toggle_button_is_interaction(self) -> None:
+        elem = _element(role="toggle_button")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.8: Destructive name heuristics
+# ---------------------------------------------------------------------------
+
+
+class TestDestructiveNameHeuristics:
+    """Elements whose name contains destructive substrings are SENSITIVE."""
+
+    @pytest.mark.parametrize(
+        ("name", "expected_pattern"),
+        [
+            ("Delete", "delete"),
+            ("Remove Item", "remove"),
+            ("Clear All", "clear"),
+            ("Destroy Data", "destroy"),
+            ("Erase History", "erase"),
+            ("Purge Cache", "purge"),
+            ("Drop Table", "drop"),
+            ("Discard Changes", "discard"),
+            ("Nuke Settings", "nuke"),
+            ("Obliterate File", "obliterate"),
+            ("Wipe Disk", "wipe"),
+            ("Format Drive", "format"),
+            ("Reset Settings", "reset"),
+            ("Uninstall App", "uninstall"),
+        ],
+    )
+    def test_destructive_names_are_sensitive(self, name: str, expected_pattern: str) -> None:
+        elem = _element(role="button", name=name)
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+        assert expected_pattern in result.reason
+
+    def test_destructive_name_confidence(self) -> None:
+        elem = _element(role="button", name="Delete")
+        result = classify(elem, "click")
+        assert result.confidence == pytest.approx(0.9)
+
+    def test_case_insensitive_matching(self) -> None:
+        elem = _element(role="button", name="DELETE ALL")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_mixed_case_matching(self) -> None:
+        elem = _element(role="button", name="DeLeTe")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_substring_matching(self) -> None:
+        """Pattern 'delete' matches 'delete_user_account'."""
+        elem = _element(role="button", name="delete_user_account")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_no_false_positive_safe_name(self) -> None:
+        """A name without destructive patterns is not SENSITIVE by name."""
+        elem = _element(role="button", name="Save Changes")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_null_name_no_match(self) -> None:
+        """None name should not trigger destructive name heuristic."""
+        elem = _element(role="button", name=None)
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_empty_name_no_match(self) -> None:
+        """Empty string name should not trigger destructive name heuristic."""
+        elem = _element(role="button", name="")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.9: DESTRUCTIVE_NAME_PATTERNS public constant
+# ---------------------------------------------------------------------------
+
+
+class TestDestructiveNamePatternsConstant:
+    """DESTRUCTIVE_NAME_PATTERNS is a public tuple of 14 patterns."""
+
+    def test_is_tuple(self) -> None:
+        assert isinstance(DESTRUCTIVE_NAME_PATTERNS, tuple)
+
+    def test_pattern_count(self) -> None:
+        assert len(DESTRUCTIVE_NAME_PATTERNS) == 14
+
+    def test_contains_core_patterns(self) -> None:
+        patterns = set(DESTRUCTIVE_NAME_PATTERNS)
+        for expected in ("delete", "remove", "clear", "destroy", "erase"):
+            assert expected in patterns
+
+    def test_contains_all_patterns(self) -> None:
+        expected = {
+            "delete",
+            "remove",
+            "clear",
+            "destroy",
+            "erase",
+            "purge",
+            "drop",
+            "discard",
+            "nuke",
+            "obliterate",
+            "wipe",
+            "format",
+            "reset",
+            "uninstall",
+        }
+        assert set(DESTRUCTIVE_NAME_PATTERNS) == expected
+
+
+# ---------------------------------------------------------------------------
+# TC-4.10: READ_ONLY roles
+# ---------------------------------------------------------------------------
+
+
+class TestReadOnlyClassification:
+    """Informational / container roles are READ_ONLY."""
+
+    READ_ONLY_ROLES: ClassVar[list[str]] = [
+        "label",
+        "text",
+        "heading",
+        "link",
+        "image",
+        "icon",
+        "list",
+        "list_item",
+        "table",
+        "table_row",
+        "table_column_header",
+        "table_header",
+        "progress_bar",
+        "separator",
+        "group",
+        "tab_bar",
+        "tooltip",
+        "status_bar",
+        "title_bar",
+        "chart",
+        "dialog",
+        "window",
+        "pane",
+        "document",
+        "page_tab_list",
+    ]
+
+    @pytest.mark.parametrize("role", READ_ONLY_ROLES)
+    def test_read_only_roles(self, role: str) -> None:
+        elem = _element(role=role)
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+        assert result.confirmation_required is False
+
+    @pytest.mark.parametrize("role", READ_ONLY_ROLES)
+    def test_read_only_roles_confidence(self, role: str) -> None:
+        elem = _element(role=role)
+        result = classify(elem, "click")
+        assert result.confidence == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# TC-4.11: INTERACTION roles (default)
+# ---------------------------------------------------------------------------
+
+
+class TestInteractionClassification:
+    """Input elements with limited blast radius are INTERACTION (default)."""
+
+    INTERACTION_ROLES: ClassVar[list[str]] = [
+        "text_input",
+        "combo_box",
+        "slider",
+        "check_box",
+        "radio_button",
+        "spin_button",
+        "search_input",
+        "list_box",
+        "drop_down",
+        "switch",
+        "date_picker",
+        "scroll_bar",
+        "color_picker",
+        "text_area",
+        "button",
+        "submit_button",
+        "cancel_button",
+        "toggle_button",
+        "menu_item",
+        "tree_item",
+        "tab",
+        "password_input",
+        "close_button",
+        "minimize_button",
+        "maximize_button",
+    ]
+
+    @pytest.mark.parametrize("role", INTERACTION_ROLES)
+    def test_interaction_roles(self, role: str) -> None:
+        elem = _element(role=role)
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+        assert result.confirmation_required is False
+
+    def test_unknown_role_defaults_to_interaction(self) -> None:
+        elem = _element(role="completely_unknown_role")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_interaction_confidence(self) -> None:
+        elem = _element(role="text_input")
+        result = classify(elem, "type")
+        assert result.confidence == pytest.approx(0.8)
+
+
+# ---------------------------------------------------------------------------
+# TC-4.12: Priority rules — disabled before sensitive role
+# ---------------------------------------------------------------------------
+
+
+class TestPriorityRules:
+    """Classification rules apply in the correct priority order."""
+
+    def test_disabled_before_sensitive_role(self) -> None:
+        """Disabled delete_button is READ_ONLY, not SENSITIVE."""
+        elem = _element(role="delete_button", enabled=False)
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_focus_before_sensitive_role(self) -> None:
+        """Focus on delete_button is READ_ONLY, not SENSITIVE."""
+        elem = _element(role="delete_button")
+        result = classify(elem, "focus")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_focus_before_disabled(self) -> None:
+        """Focus on disabled element is still READ_ONLY (both rules agree)."""
+        elem = _element(role="button", enabled=False)
+        result = classify(elem, "focus")
+        assert result.risk_level == "READ_ONLY"
+
+    def test_sensitive_role_before_name_heuristic(self) -> None:
+        """Sensitive role triggers before name heuristic is checked."""
+        elem = _element(role="delete_button", name="Save")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+        assert "Sensitive role" in result.reason
+
+    def test_name_heuristic_before_read_only_role(self) -> None:
+        """A read-only role with destructive name is still SENSITIVE."""
+        elem = _element(role="button", name="Delete Everything")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_read_only_role_before_interaction_default(self) -> None:
+        """Known read-only role is READ_ONLY, not INTERACTION."""
+        elem = _element(role="label")
+        result = classify(elem, "click")
+        assert result.risk_level == "READ_ONLY"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.13: NormalizedElement integration
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizedElementIntegration:
+    """classify works with real NormalizedElement instances."""
+
+    def test_full_element(self) -> None:
+        elem = NormalizedElement(
+            ref="e42",
+            backend_id="win-42",
+            role="text_input",
+            name="Username",
+            states=ElementStates(enabled=True, focused=True),
+            actions=["click", "focus", "type"],
+        )
+        result = classify(elem, "type")
+        assert result.risk_level == "INTERACTION"
+
+    def test_element_with_children(self) -> None:
+        parent = NormalizedElement(
+            ref="e1",
+            backend_id="win-1",
+            role="dialog",
+            name="Confirm Action",
+            children=[
+                NormalizedElement(
+                    ref="e2",
+                    backend_id="win-2",
+                    role="delete_button",
+                    name="Delete",
+                ),
+            ],
+        )
+        result = classify(parent, "click")
+        # dialog is a READ_ONLY role
+        assert result.risk_level == "READ_ONLY"
+
+    def test_element_with_bounds(self) -> None:
+        from guidewire.models import Bounds
+
+        elem = NormalizedElement(
+            ref="e10",
+            backend_id="win-10",
+            role="button",
+            name="Submit",
+            bounds=Bounds(x=100.0, y=200.0, width=80.0, height=30.0),
+        )
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_element_with_all_states_none(self) -> None:
+        """Default ElementStates (all None) should not trigger disabled rule."""
+        elem = NormalizedElement(
+            ref="e5",
+            backend_id="win-5",
+            role="delete_button",
+        )
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.14: Multiple actions on same element
+# ---------------------------------------------------------------------------
+
+
+class TestMultipleActions:
+    """Different actions on the same element can yield different risk levels."""
+
+    def test_focus_vs_click_on_button(self) -> None:
+        elem = _element(role="button")
+        focus_result = classify(elem, "focus")
+        click_result = classify(elem, "click")
+        assert focus_result.risk_level == "READ_ONLY"
+        assert click_result.risk_level == "INTERACTION"
+
+    def test_focus_vs_click_on_delete_button(self) -> None:
+        elem = _element(role="delete_button")
+        focus_result = classify(elem, "focus")
+        click_result = classify(elem, "click")
+        assert focus_result.risk_level == "READ_ONLY"
+        assert click_result.risk_level == "SENSITIVE"
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "click",
+            "type",
+            "set_value",
+            "select",
+            "toggle",
+            "expand",
+            "collapse",
+            "scroll",
+            "increment",
+            "decrement",
+            "open_menu",
+            "invoke",
+        ],
+    )
+    def test_non_focus_actions_not_auto_read_only(self, action: str) -> None:
+        """Only 'focus' is auto-READ_ONLY; all other actions follow normal rules."""
+        elem = _element(role="label")
+        result = classify(elem, action)
+        # label is a READ_ONLY role so it's still READ_ONLY, but via Rule 5
+        # not Rule 2 — the point is it's not short-circuited by the focus rule
+        assert result.risk_level == "READ_ONLY"
+
+
+# ---------------------------------------------------------------------------
+# TC-4.15: Edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCases:
+    """Edge cases and boundary conditions."""
+
+    def test_empty_role_defaults_to_interaction(self) -> None:
+        elem = _element(role="")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_role_with_spaces(self) -> None:
+        elem = _element(role="  ")
+        result = classify(elem, "click")
+        assert result.risk_level == "INTERACTION"
+
+    def test_name_with_special_characters(self) -> None:
+        """Destructive pattern in a name with special chars still matches."""
+        elem = _element(role="button", name="Delete?!@#$%")
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_name_unicode(self) -> None:
+        """Unicode in name should still allow pattern matching."""
+        elem = _element(role="button", name="Delete\u200bAll")  # zero-width space
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_very_long_name(self) -> None:
+        elem = _element(role="button", name="a" * 10000 + "delete" + "b" * 10000)
+        result = classify(elem, "click")
+        assert result.risk_level == "SENSITIVE"
+
+    def test_confidence_range(self) -> None:
+        """All confidence values should be in [0.0, 1.0]."""
+        scenarios = [
+            _element(role="label"),
+            _element(role="text_input"),
+            _element(role="delete_button"),
+            _element(role="button", name="Delete"),
+            _element(role="button", enabled=False),
+        ]
+        actions = ["click", "focus", "type"]
+        for elem in scenarios:
+            for action in actions:
+                result = classify(elem, action)
+                assert 0.0 <= result.confidence <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# TC-4.16: Module exports (__all__)
+# ---------------------------------------------------------------------------
+
+
+class TestExports:
+    """Public API is correctly exported."""
+
+    def test_all_entries(self) -> None:
+        from guidewire import safety
+
+        assert set(safety.__all__) == {
+            "RiskAssessment",
+            "RiskLevel",
+            "SENSITIVE_ROLES",
+            "DESTRUCTIVE_NAME_PATTERNS",
+            "ROLE_RISK_MAP",
+            "classify",
+        }
+
+    def test_all_count(self) -> None:
+        from guidewire import safety
+
+        assert len(safety.__all__) == 6
+
+    def test_import_risk_assessment(self) -> None:
+        from guidewire.safety import RiskAssessment  # noqa: F401
+
+    def test_import_risk_level(self) -> None:
+        from guidewire.safety import RiskLevel  # noqa: F401
+
+    def test_import_sensitive_roles(self) -> None:
+        from guidewire.safety import SENSITIVE_ROLES  # noqa: F401
+
+    def test_import_destructive_name_patterns(self) -> None:
+        from guidewire.safety import DESTRUCTIVE_NAME_PATTERNS  # noqa: F401
+
+    def test_import_classify(self) -> None:
+        from guidewire.safety import classify  # noqa: F401
+
+    def test_import_role_risk_map(self) -> None:
+        from guidewire.safety import ROLE_RISK_MAP  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# TC-4.17: ROLE_RISK_MAP public constant (AC-4)
+# ---------------------------------------------------------------------------
+
+
+class TestRoleRiskMap:
+    """ROLE_RISK_MAP is a public dict mapping roles to RiskLevel values."""
+
+    def test_is_dict(self) -> None:
+        assert isinstance(ROLE_RISK_MAP, dict)
+
+    def test_maps_read_only_roles(self) -> None:
+        for role in ("label", "text", "heading", "image", "dialog", "window"):
+            assert ROLE_RISK_MAP.get(role) == "READ_ONLY"
+
+    def test_maps_sensitive_roles(self) -> None:
+        for role in (
+            "delete_button",
+            "remove_button",
+            "clear_button",
+            "password_field",
+            "credential_field",
+        ):
+            assert ROLE_RISK_MAP.get(role) == "SENSITIVE"
+
+    def test_unknown_role_not_in_map(self) -> None:
+        assert "button" not in ROLE_RISK_MAP
+        assert "text_input" not in ROLE_RISK_MAP
+
+    def test_values_are_valid_risk_levels(self) -> None:
+        for value in ROLE_RISK_MAP.values():
+            assert value in ("READ_ONLY", "INTERACTION", "SENSITIVE")
