@@ -3,7 +3,7 @@
 from mcp.server.fastmcp import FastMCP
 
 
-def register(mcp: FastMCP) -> None:
+def register(mcp: FastMCP, **kwargs: object) -> None:
     """Register the desktop.press_key tool stub."""
 
     @mcp.tool(name="desktop.press_key")

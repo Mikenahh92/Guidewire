@@ -8,9 +8,12 @@ invoke them through stdio transport.
 """
 
 import asyncio
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from guidewire.backends.base import DesktopBackend
+from guidewire.refs import ElementRefStore
 from guidewire.tools import register_all
 
 __all__ = ["GuidewireServer"]
@@ -23,7 +26,11 @@ class GuidewireServer:
     creating, configuring, and launching the Guidewire MCP server.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        backend: DesktopBackend | None = None,
+        ref_store: ElementRefStore | None = None,
+    ) -> None:
         self._mcp = FastMCP(
             name="guidewire",
             instructions=(
@@ -32,15 +39,27 @@ class GuidewireServer:
                 "OS accessibility APIs."
             ),
         )
+        self._backend = backend
+        self._ref_store = ref_store or ElementRefStore()
 
     @property
     def mcp(self) -> FastMCP:
         """The underlying FastMCP instance."""
         return self._mcp
 
+    @property
+    def backend(self) -> DesktopBackend | None:
+        """The platform backend (``None`` when running in stub mode)."""
+        return self._backend
+
+    @property
+    def ref_store(self) -> ElementRefStore:
+        """The element reference store for resolving short references."""
+        return self._ref_store
+
     def register_tools(self) -> None:
-        """Register all tool stubs on the MCP server."""
-        register_all(self._mcp)
+        """Register all tools on the MCP server."""
+        register_all(self._mcp, backend=self._backend, ref_store=self._ref_store)
 
     def run(self) -> None:
         """Run the server with stdio transport (blocking)."""

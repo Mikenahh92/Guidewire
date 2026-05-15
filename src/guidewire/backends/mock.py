@@ -316,7 +316,9 @@ class MockBackend(DesktopBackend):
         return None
 
     def is_valid(self, element: NativeHandle) -> bool:
-        """Check whether a mock element reference is still valid."""
+        """Check whether a mock element or window reference is still valid."""
+        if element in self._windows:
+            return True
         if element not in self._elements:
             return False
         return self._elements[element].valid

@@ -1,8 +1,9 @@
-"""Tool stubs for the Guidewire MCP server.
+"""Tool handlers for the Guidewire MCP server.
 
-Each sub-module provides a ``register(mcp)`` function that registers one
-tool stub on a :class:`~mcp.server.fastmcp.FastMCP` instance.  Stubs return
-static placeholder responses because no platform backend is wired yet.
+Each sub-module provides a ``register(mcp, **deps)`` function that registers
+one tool on a :class:`~mcp.server.fastmcp.FastMCP` instance.  Tools that have
+been wired to a backend receive a ``backend`` and ``ref_store`` dependency;
+unwired tools continue to return static placeholder responses.
 
 Tool set (architecture v2 §3.1):
 
@@ -17,8 +18,13 @@ Tool set (architecture v2 §3.1):
 """
 
 import importlib
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
+
+if TYPE_CHECKING:
+    from guidewire.backends.base import DesktopBackend
+    from guidewire.refs import ElementRefStore
 
 __all__ = ["register_all"]
 
@@ -35,8 +41,20 @@ _TOOL_MODULES = [
 ]
 
 
-def register_all(mcp: FastMCP) -> None:
-    """Register every tool stub on *mcp*."""
+def register_all(
+    mcp: FastMCP,
+    *,
+    backend: "DesktopBackend | None" = None,
+    ref_store: "ElementRefStore | None" = None,
+) -> None:
+    """Register every tool on *mcp*.
+
+    Args:
+        mcp: The FastMCP instance to register tools on.
+        backend: Optional platform backend for wired tool handlers.
+        ref_store: Optional element reference store for resolving refs.
+    """
+    deps: dict[str, Any] = {"backend": backend, "ref_store": ref_store}
     for module_name in _TOOL_MODULES:
         mod = importlib.import_module(module_name, package="guidewire.tools")
-        mod.register(mcp)
+        mod.register(mcp, **deps)
