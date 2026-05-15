@@ -102,6 +102,7 @@ class ElementStates:
         offscreen: Whether the element is clipped or positioned offscreen.
         read_only: Whether the element rejects value changes.
         required: Whether the element must be filled for form submission.
+        is_password: Whether the element is a password or credential input.
     """
 
     enabled: bool | None = None
@@ -113,6 +114,7 @@ class ElementStates:
     offscreen: bool | None = None
     read_only: bool | None = None
     required: bool | None = None
+    is_password: bool | None = None
 
     # --- Convenience helpers ------------------------------------------------
 

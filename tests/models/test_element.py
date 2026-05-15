@@ -127,6 +127,7 @@ class TestElementStates:
         assert s.offscreen is None
         assert s.read_only is None
         assert s.required is None
+        assert s.is_password is None
 
     def test_explicit_values(self) -> None:
         s = ElementStates(enabled=True, focused=False, checked="mixed")
