@@ -91,7 +91,7 @@ EXPECTED_TOOLS = [
     {
         "name": "desktop.press_key",
         "description_pattern": "Press a keyboard key",
-        "required_params": ["key"],
+        "required_params": ["keys"],
         "optional_params": [],
     },
     {
@@ -216,7 +216,7 @@ class TestToolStubBehaviour:
 
     async def test_press_key_returns_confirmation(self, server):
         """desktop.press_key should return a confirmation message."""
-        result, _meta = await server.mcp.call_tool("desktop.press_key", arguments={"key": "Enter"})
+        result, _meta = await server.mcp.call_tool("desktop.press_key", arguments={"keys": "Enter"})
         assert "Enter" in result[0].text
         assert "Pressed" in result[0].text
 

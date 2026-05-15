@@ -298,11 +298,18 @@ class MockBackend(DesktopBackend):
         action: DesktopAction,
         **kwargs: Any,
     ) -> Any:
-        """Perform an action on a mock element.
+        """Perform an action on a mock element or window.
 
         Parameter order is ``(handle, action, **kwargs)`` per architecture v2 §4.1.
-        Returns ``str`` when action is ``GET_TEXT``, otherwise ``None``.
+        Accepts both element handles and window handles (for window-level actions
+        like ``PRESS_KEY``).  Returns ``str`` when action is ``GET_TEXT``,
+        otherwise ``None``.
         """
+        # Window-level actions (e.g. press_key) target window handles
+        if handle in self._windows:
+            self._action_log.append({"action": action, "handle": handle, "kwargs": kwargs})
+            return None
+
         if handle not in self._elements:
             raise ElementNotFoundError(f"Element handle {handle!r} not found")
         e = self._elements[handle]
