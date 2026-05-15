@@ -42,7 +42,7 @@ _TOOL_MODULES = [
 ]
 
 # Modules whose ``register()`` accepts an optional backend argument.
-_BACKEND_TOOL_MODULES: frozenset[str] = frozenset({".list_windows"})
+_BACKEND_TOOL_MODULES: frozenset[str] = frozenset({".list_windows", ".snapshot"})
 
 
 def register_all(
