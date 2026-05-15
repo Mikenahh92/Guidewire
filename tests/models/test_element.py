@@ -352,6 +352,18 @@ class TestNormalizedElement:
         assert len(d["children"]) == 1
         assert d["children"][0]["ref"] == "e2"
 
+    def test_to_dict_includes_value_when_set(self) -> None:
+        """to_dict should include 'value' key when value is not None."""
+        el = NormalizedElement(
+            ref="e1",
+            backend_id="x",
+            role="text_input",
+            value="hello",
+        )
+        d = el.to_dict()
+        assert "value" in d
+        assert d["value"] == "hello"
+
     def test_to_dict_is_json_serializable(self) -> None:
         child = NormalizedElement(
             ref="e2",

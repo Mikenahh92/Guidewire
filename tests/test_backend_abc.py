@@ -183,7 +183,11 @@ class TestMinimalSubclass:
                 pass
 
             def snapshot(self, window, max_depth=4, max_nodes=500):
-                return {"ref": window, "role": "window", "name": "", "states": {}, "bounds": None, "actions": [], "children": []}
+                return {
+                    "ref": window, "role": "window", "name": "",
+                    "states": {}, "bounds": None, "actions": [],
+                    "children": [],
+                }
 
             def find_elements(self, window, role=None, name=None):
                 return []

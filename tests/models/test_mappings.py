@@ -220,6 +220,12 @@ class TestLinuxStates:
         assert transform(1) is True
         assert transform(2) == "mixed"
 
+    def test_checked_with_bool_input(self) -> None:
+        """_atspi_bool_or_mixed passes through Python bool values directly."""
+        _, transform = STATE_MAP[("linux", "checked")]
+        assert transform(True) is True
+        assert transform(False) is False
+
     def test_indeterminate(self) -> None:
         field, transform = STATE_MAP[("linux", "indeterminate")]
         assert field == "checked"

@@ -884,3 +884,179 @@ class TestRoleRiskMap:
     def test_values_are_valid_risk_levels(self) -> None:
         for value in ROLE_RISK_MAP.values():
             assert value in ("READ_ONLY", "INTERACTION", "SENSITIVE")
+
+
+# ---------------------------------------------------------------------------
+# TC-030: ROLE_RISK_MAP entry count and completeness
+# ---------------------------------------------------------------------------
+
+
+class TestRoleRiskMapCompleteness:
+    """TC-030: ROLE_RISK_MAP has expected entry count and covers all roles."""
+
+    def test_entry_count(self) -> None:
+        """ROLE_RISK_MAP should have 30 entries (25 READ_ONLY + 5 SENSITIVE)."""
+        assert len(ROLE_RISK_MAP) == 30
+
+    def test_read_only_role_count(self) -> None:
+        ro = [r for r, v in ROLE_RISK_MAP.items() if v == "READ_ONLY"]
+        assert len(ro) == 25
+
+    def test_sensitive_role_count(self) -> None:
+        se = [r for r, v in ROLE_RISK_MAP.items() if v == "SENSITIVE"]
+        assert len(se) == 5
+
+    def test_no_interaction_in_map(self) -> None:
+        """INTERACTION roles are not in ROLE_RISK_MAP (they are the default)."""
+        assert "INTERACTION" not in ROLE_RISK_MAP.values()
+
+
+# ---------------------------------------------------------------------------
+# TC-031: SENSITIVE_ROLES and ROLE_RISK_MAP consistency
+# ---------------------------------------------------------------------------
+
+
+class TestSensitiveRolesConsistency:
+    """TC-031: SENSITIVE_ROLES set matches SENSITIVE entries in ROLE_RISK_MAP."""
+
+    def test_sensitive_roles_match_map(self) -> None:
+        map_sensitive = {r for r, v in ROLE_RISK_MAP.items() if v == "SENSITIVE"}
+        assert map_sensitive == SENSITIVE_ROLES
+
+    def test_sensitive_roles_is_frozenset(self) -> None:
+        assert isinstance(SENSITIVE_ROLES, frozenset)
+
+    def test_all_sensitive_roles_in_map(self) -> None:
+        for role in SENSITIVE_ROLES:
+            assert role in ROLE_RISK_MAP
+
+
+# ---------------------------------------------------------------------------
+# TC-032: DESTRUCTIVE_NAME_PATTERNS type and immutability
+# ---------------------------------------------------------------------------
+
+
+class TestDestructivePatternsImmutability:
+    """TC-032: DESTRUCTIVE_NAME_PATTERNS is a tuple (immutable)."""
+
+    def test_is_tuple(self) -> None:
+        assert isinstance(DESTRUCTIVE_NAME_PATTERNS, tuple)
+
+    def test_not_list(self) -> None:
+        assert not isinstance(DESTRUCTIVE_NAME_PATTERNS, list)
+
+    def test_cannot_mutate(self) -> None:
+        """Tuple does not support item assignment."""
+        with pytest.raises(TypeError):
+            DESTRUCTIVE_NAME_PATTERNS[0] = "harmless"  # type: ignore[index]
+
+
+# ---------------------------------------------------------------------------
+# TC-033: classify() reason string format
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyReasonFormat:
+    """TC-033: classify() reason strings follow expected format."""
+
+    def test_disabled_reason(self) -> None:
+        elem = _element(role="button", enabled=False)
+        result = classify(elem, "click")
+        assert "disabled" in result.reason.lower()
+
+    def test_focus_reason(self) -> None:
+        elem = _element(role="button")
+        result = classify(elem, "focus")
+        assert "focus" in result.reason.lower()
+
+    def test_sensitive_role_reason(self) -> None:
+        elem = _element(role="delete_button")
+        result = classify(elem, "click")
+        assert "sensitive" in result.reason.lower()
+        assert "delete_button" in result.reason
+
+    def test_destructive_name_reason(self) -> None:
+        elem = _element(role="button", name="Delete All")
+        result = classify(elem, "click")
+        assert "destructive" in result.reason.lower()
+
+    def test_read_only_role_reason(self) -> None:
+        elem = _element(role="label")
+        result = classify(elem, "click")
+        assert "read-only" in result.reason.lower()
+
+    def test_default_reason(self) -> None:
+        elem = _element(role="button")
+        result = classify(elem, "click")
+        assert "default" in result.reason.lower()
+
+
+# ---------------------------------------------------------------------------
+# TC-034: classify() with all DesktopAction values
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyAllActions:
+    """TC-034: classify() handles all 13 DesktopAction values."""
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "click",
+            "focus",
+            "type",
+            "set_value",
+            "select",
+            "toggle",
+            "expand",
+            "collapse",
+            "scroll",
+            "increment",
+            "decrement",
+            "open_menu",
+            "invoke",
+        ],
+    )
+    def test_all_actions_return_risk_assessment(self, action: str) -> None:
+        """Every valid DesktopAction returns a RiskAssessment."""
+        elem = _element(role="button")
+        result = classify(elem, action)
+        assert isinstance(result, RiskAssessment)
+        assert result.risk_level in ("READ_ONLY", "INTERACTION", "SENSITIVE")
+        assert 0.0 <= result.confidence <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# TC-035: RiskAssessment repr and string representation
+# ---------------------------------------------------------------------------
+
+
+class TestRiskAssessmentRepr:
+    """TC-035: RiskAssessment has useful repr/str."""
+
+    def test_repr_contains_risk_level(self) -> None:
+        ra = RiskAssessment(
+            risk_level="SENSITIVE",
+            confirmation_required=True,
+            reason="test",
+            confidence=1.0,
+        )
+        r = repr(ra)
+        assert "SENSITIVE" in r
+
+    def test_repr_contains_confirmation(self) -> None:
+        ra = RiskAssessment(
+            risk_level="READ_ONLY",
+            confirmation_required=False,
+            reason="test",
+            confidence=1.0,
+        )
+        r = repr(ra)
+        assert "READ_ONLY" in r
+
+    def test_frozen_prevents_mutation(self) -> None:
+        ra = RiskAssessment("INTERACTION", False, "test", 0.8)
+        with pytest.raises(AttributeError):
+            ra.risk_level = "SENSITIVE"  # type: ignore[misc]
+        with pytest.raises(AttributeError):
+            ra.confidence = 0.0  # type: ignore[misc]

@@ -19,7 +19,6 @@ from guidewire.backends import (
     DesktopAction,
     DesktopBackend,
     ElementBounds,
-    ElementState,
     MockBackend,
     NativeHandle,
 )
@@ -323,6 +322,14 @@ class TestFindElements:
     def test_find_window_not_found(self, backend: MockBackend) -> None:
         with pytest.raises(WindowNotFoundError):
             backend.find_elements(NativeHandle("nonexistent"), role="button")
+
+    def test_find_skips_invalidated_elements(self, backend: MockBackend) -> None:
+        """find_elements should skip elements that have been invalidated."""
+        buttons_before = backend.find_elements(backend._w1, role="button")
+        assert len(buttons_before) == 2
+        backend.invalidate(buttons_before[0])
+        buttons_after = backend.find_elements(backend._w1, role="button")
+        assert len(buttons_after) == 1
 
 
 # -- TC-31-TC-33: perform_action (handle, action, **kwargs) ------------------

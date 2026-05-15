@@ -10,8 +10,6 @@ Verifies that the privacy module:
 - Deep copy returned when redact_passwords=False
 """
 
-import copy
-
 import pytest
 
 from guidewire.models import Bounds, ElementStates, NormalizedElement
@@ -510,8 +508,9 @@ class TestRedactSnapshot:
     def test_silent_config_returns_deep_copy(
         self, silent_config: PrivacyConfig, sample_snapshot: NormalizedElement,
     ) -> None:
-        result = redact_snapshot([sample_snapshot], config=silent_config)
-        assert result is not [sample_snapshot]
+        input_list = [sample_snapshot]
+        result = redact_snapshot(input_list, config=silent_config)
+        assert result is not input_list
         assert len(result) == 1
         # Deep copy: values preserved but different object
         assert result[0] is not sample_snapshot
@@ -566,7 +565,10 @@ class TestRedactSnapshot:
             _window(
                 name="keepass.exe",
                 children=[
-                    _el(role="text_input", name="Password", value="secret", text="secret", ref="e1"),
+                    _el(
+                        role="text_input", name="Password",
+                        value="secret", text="secret", ref="e1",
+                    ),
                 ],
                 ref="w1",
             ),
@@ -637,3 +639,225 @@ class TestRedactSnapshot:
         root = _root_with_windows(windows)
         result = redact_snapshot([root], app_name="KeepAss.exe", config=config)
         assert result[0].children[0].name == "[APP DENYLISTED]"
+
+
+# ---------------------------------------------------------------------------
+# TC-040: PrivacyConfig field types
+# ---------------------------------------------------------------------------
+
+
+class TestPrivacyConfigFieldTypes:
+    """TC-040: PrivacyConfig fields have correct types."""
+
+    def test_denylist_apps_is_frozenset(self) -> None:
+        c = PrivacyConfig()
+        assert isinstance(c.denylist_apps, frozenset)
+
+    def test_denylist_apps_custom_type(self) -> None:
+        c = PrivacyConfig(denylist_apps=frozenset({"a.exe"}))
+        assert isinstance(c.denylist_apps, frozenset)
+
+    def test_redaction_placeholder_is_str(self) -> None:
+        c = PrivacyConfig()
+        assert isinstance(c.redaction_placeholder, str)
+
+    def test_redact_passwords_is_bool(self) -> None:
+        c = PrivacyConfig()
+        assert isinstance(c.redact_passwords, bool)
+
+
+# ---------------------------------------------------------------------------
+# TC-041: is_password_field boundary cases
+# ---------------------------------------------------------------------------
+
+
+class TestIsPasswordFieldBoundary:
+    """TC-041: is_password_field handles edge cases correctly."""
+
+    def test_name_with_whitespace(self) -> None:
+        """Whitespace-only name should not match any pattern."""
+        el = _el(role="text_input", name="   ")
+        assert is_password_field(el) is False
+
+    def test_name_with_special_chars(self) -> None:
+        """Special chars around password keyword still match."""
+        el = _el(role="text_input", name="***password***")
+        assert is_password_field(el) is True
+
+    def test_name_substring_pin(self) -> None:
+        """'PIN' in 'SPIN' should match (substring match)."""
+        el = _el(role="text_input", name="SPIN Code")
+        assert is_password_field(el) is True
+
+    def test_name_exact_credential(self) -> None:
+        el = _el(role="text_input", name="credential")
+        assert is_password_field(el) is True
+
+    def test_empty_string_name(self) -> None:
+        """Empty string name should not match."""
+        el = _el(role="text_input", name="")
+        assert is_password_field(el) is False
+
+    def test_name_passwd_substring(self) -> None:
+        """'passwd' substring match."""
+        el = _el(role="text_input", name="enter_passwd_here")
+        assert is_password_field(el) is True
+
+    def test_name_pwd_substring(self) -> None:
+        """'pwd' substring match."""
+        el = _el(role="text_input", name="your_pwd")
+        assert is_password_field(el) is True
+
+    def test_role_text_input_with_value_no_name(self) -> None:
+        """text_input with value but no name is not a password field."""
+        el = _el(role="text_input", name=None, value="secret")
+        assert is_password_field(el) is False
+
+
+# ---------------------------------------------------------------------------
+# TC-042: redact_element with all fields
+# ---------------------------------------------------------------------------
+
+
+class TestRedactElementAllFields:
+    """TC-042: redact_element can redact all four text fields at once."""
+
+    def test_redact_all_fields(self) -> None:
+        el = _el(
+            role="text_input", name="Password",
+            value="v", text="t", description="desc",
+        )
+        result = redact_element(
+            el, redact_value=True, redact_text=True,
+            redact_name=True, redact_description=True,
+        )
+        assert result.value == "[REDACTED]"
+        assert result.text == "[REDACTED]"
+        assert result.name == "[REDACTED]"
+        assert result.description == "[REDACTED]"
+
+    def test_redact_no_fields(self) -> None:
+        """Redacting zero fields on password element returns copy with
+        no changes to value/text/name/description."""
+        el = _el(
+            role="text_input", name="Password",
+            value="v", text="t",
+        )
+        result = redact_element(
+            el, redact_value=False, redact_text=False,
+            redact_name=False, redact_description=False,
+        )
+        assert result.value == "v"
+        assert result.text == "t"
+        assert result.name == "Password"
+
+    def test_redact_preserves_other_fields(self) -> None:
+        """redact_element preserves ref, backend_id, role, states, bounds."""
+        el = _el(
+            role="text_input", name="Password",
+            value="v", text="t",
+            states=ElementStates(enabled=True),
+        )
+        result = redact_element(el)
+        assert result.ref == el.ref
+        assert result.backend_id == el.backend_id
+        assert result.role == el.role
+        assert result.states == el.states
+
+
+# ---------------------------------------------------------------------------
+# TC-043: redact_snapshot with multiple denylisted apps
+# ---------------------------------------------------------------------------
+
+
+class TestMultipleDenylistedApps:
+    """TC-043: Multiple apps on denylist are all stubbed."""
+
+    def test_two_denylisted_apps(self) -> None:
+        config = PrivacyConfig(
+            denylist_apps=frozenset({"keepass.exe", "bitwarden.exe"}),
+        )
+        windows = [
+            _window(name="keepass.exe", ref="w1"),
+            _window(name="Notepad", ref="w2"),
+            _window(name="bitwarden.exe", ref="w3"),
+        ]
+        root = _root_with_windows(windows)
+        result = redact_snapshot([root], config=config)
+        assert result[0].children[0].name == "[APP DENYLISTED]"
+        assert result[0].children[1].name == "Notepad"
+        assert result[0].children[2].name == "[APP DENYLISTED]"
+
+
+# ---------------------------------------------------------------------------
+# TC-044: redact_snapshot idempotency
+# ---------------------------------------------------------------------------
+
+
+class TestRedactSnapshotIdempotency:
+    """TC-044: Redacting an already-redacted snapshot is safe."""
+
+    def test_double_redact_same_result(self, config: PrivacyConfig) -> None:
+        tree = _window(
+            name="Form",
+            children=[
+                _el(
+                    role="text_input", name="Password",
+                    value="secret", text="secret", ref="e1",
+                ),
+            ],
+        )
+        result1 = redact_snapshot([tree], config=config)
+        result2 = redact_snapshot(result1, config=config)
+        pw = result2[0].children[0]
+        assert pw.value == "[REDACTED]"
+        assert pw.text == "[REDACTED]"
+
+
+# ---------------------------------------------------------------------------
+# TC-045: redact_snapshot with empty elements list
+# ---------------------------------------------------------------------------
+
+
+class TestRedactSnapshotEmpty:
+    """TC-045: Redacting an empty list returns an empty list."""
+
+    def test_empty_list(self, config: PrivacyConfig) -> None:
+        result = redact_snapshot([], config=config)
+        assert result == []
+
+    def test_none_config_empty_list(self) -> None:
+        result = redact_snapshot([], config=None)
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# TC-046: PrivacyConfig custom placeholder
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPlaceholder:
+    """TC-046: Custom placeholder flows through to redact_element and
+    redact_snapshot."""
+
+    def test_custom_placeholder_in_element(self) -> None:
+        el = _el(role="text_input", name="Password", value="s", text="s")
+        result = redact_element(el, redaction_placeholder="***")
+        assert result.value == "***"
+        assert result.text == "***"
+
+    def test_custom_placeholder_in_snapshot(self) -> None:
+        config = PrivacyConfig(redaction_placeholder="[HIDDEN]")
+        tree = _window(
+            name="Form",
+            children=[
+                _el(
+                    role="text_input", name="Password",
+                    value="secret", text="secret", ref="e1",
+                ),
+            ],
+        )
+        result = redact_snapshot([tree], config=config)
+        pw = result[0].children[0]
+        assert pw.value == "[HIDDEN]"
+        assert pw.text == "[HIDDEN]"
