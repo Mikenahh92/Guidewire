@@ -6,10 +6,20 @@ guarded so that this module can be imported on non-Linux platforms without
 error (the constructor will raise :class:`BackendUnavailableError` at
 instantiation time).
 
+Window activation uses AT-SPI ``activate`` action as the primary path with a
+``python-xlib`` ``_NET_ACTIVE_WINDOW`` EWMH fallback for window managers that
+do not respond to AT-SPI activation (GW-030).  The xlib fallback is extracted
+to :mod:`guidewire.backends._xlib_focus` per architecture §3.2 and §10.
+
+Post-activation verification (AC-5, architecture §4.1 step 4) confirms that
+the target accessible reports ``STATE_ACTIVE`` or ``STATE_FOCUSED`` after each
+activation attempt.
+
 Implementation status:
 - ``list_windows`` — implemented (GW-029)
 - ``snapshot`` — implemented (GW-031)
-- ``get_window_info``, ``focus_window`` — pending
+- ``focus_window`` — implemented (GW-030)
+- ``get_window_info`` — pending
 - ``find_elements`` — implemented (GW-032)
 - ``perform_action`` — implemented (GW-032)
 - ``get_element_info`` — implemented (GW-032)
@@ -29,6 +39,7 @@ from guidewire.errors import (
     BackendUnavailableError,
     ElementNotFoundError,
     StaleElementReferenceError,
+    WindowNotFoundError,
 )
 from guidewire.models import NormalizedElement
 
@@ -148,15 +159,144 @@ class LinuxBackend(DesktopBackend):
     def focus_window(self, window: NativeHandle) -> None:
         """Bring a window to the foreground.
 
-        .. todo:: Implement via ``pyatspi.Accessible`` ``grabFocus`` action.
+        Activates the window using the AT-SPI ``activate`` action.  If the
+        AT-SPI action is not supported or fails, falls back to sending a
+        ``_NET_ACTIVE_WINDOW`` EWMH client message via ``python-xlib``.
+
+        After each activation attempt, post-activation verification checks
+        whether the target accessible reports ``STATE_ACTIVE`` or
+        ``STATE_FOCUSED`` (AC-5, architecture §4.1 step 4).  If the check
+        fails the method falls through to the next mechanism.
 
         Args:
-            window: Opaque native window handle.
+            window: Opaque native window handle (a ``pyatspi.Accessible``).
 
         Raises:
-            WindowNotFoundError: If the handle is invalid.
+            WindowNotFoundError: If the handle is invalid or the accessible
+                has been destroyed.
+            ActionNotSupportedError: If neither AT-SPI activate nor the xlib
+                fallback is available, or activation succeeds but focus is
+                not acquired.
         """
-        raise NotImplementedError("focus_window not yet implemented")
+        accessible = self._resolve_accessible(window)
+
+        # -- Primary path: AT-SPI activate action ----------------------------
+        try:
+            action = self._get_action(accessible, "activate")
+            if action is not None:
+                action.doAction(0)
+                logger.debug("Activated window via AT-SPI activate: %s", window)
+                if self._verify_focus(accessible):
+                    return
+                logger.debug("Post-activation verification failed after AT-SPI activate")
+        except Exception as exc:
+            logger.debug("AT-SPI activate failed: %s", exc)
+
+        # -- Fallback: _NET_ACTIVE_WINDOW via python-xlib --------------------
+        try:
+            self._xlib_activate(accessible)
+            logger.debug("Activated window via xlib fallback: %s", window)
+            if self._verify_focus(accessible):
+                return
+            logger.debug("Post-activation verification failed after xlib fallback")
+        except ImportError:
+            logger.debug("python-xlib not available; cannot use EWMH fallback")
+        except Exception as exc:
+            logger.debug("xlib fallback failed: %s", exc)
+
+        raise ActionNotSupportedError(
+            "focus_window requires AT-SPI activate action or python-xlib "
+            "(install via: pip install python-xlib)"
+        )
+
+    # -- Private helpers for focus_window ------------------------------------
+
+    @staticmethod
+    def _resolve_accessible(handle: NativeHandle) -> Any:
+        """Validate that *handle* wraps a live ``pyatspi.Accessible``.
+
+        Returns the underlying accessible object.
+
+        Raises:
+            WindowNotFoundError: If the handle is not a pyatspi Accessible
+                or has been destroyed.
+        """
+        import pyatspi
+
+        if not isinstance(handle, pyatspi.Accessible):
+            raise WindowNotFoundError(f"Window handle {handle!r} is not a valid pyatspi Accessible")
+        try:
+            # Accessing ``name`` triggers a D-Bus round-trip; if the
+            # object has been destroyed this will raise.
+            _ = handle.name
+        except Exception:
+            raise WindowNotFoundError(
+                f"Window handle {handle!r} refers to a destroyed accessible"
+            ) from None
+        return handle
+
+    @staticmethod
+    def _get_action(accessible: Any, action_name: str) -> Any:
+        """Return the AT-SPI action object for *action_name*, or ``None``.
+
+        Real AT-SPI registries expose D-Bus prefixed names (e.g.
+        ``'default.activate'`` instead of bare ``'activate'``).  Matching
+        uses :func:`str.endswith` on the suffix ``.<action_name>`` so that
+        both ``'activate'`` and ``'default.activate'`` (or any other
+        D-Bus prefix) are accepted.
+        """
+        suffix = f".{action_name}"
+        try:
+            action_interface = accessible.get_action()
+            if action_interface is None:
+                return None
+            for i in range(action_interface.get_n_actions()):
+                name = action_interface.get_action_name(i)
+                if name == action_name or name.endswith(suffix):
+                    return action_interface
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _verify_focus(accessible: Any) -> bool:
+        """Check whether *accessible* reports STATE_ACTIVE or STATE_FOCUSED.
+
+        This is the AC-5 post-activation verification (architecture §4.1 step 4).
+        Returns ``True`` if focus is confirmed, ``False`` otherwise.
+
+        Args:
+            accessible: A ``pyatspi.Accessible`` to query.
+
+        Returns:
+            ``True`` if the accessible has STATE_ACTIVE or STATE_FOCUSED.
+        """
+        import pyatspi
+
+        try:
+            state_set = accessible.get_state_set()
+            if state_set.contains(pyatspi.STATE_ACTIVE) or state_set.contains(
+                pyatspi.STATE_FOCUSED
+            ):
+                logger.debug("Post-activation verification passed: %s", accessible)
+                return True
+        except Exception as exc:
+            logger.debug("State query failed during verification: %s", exc)
+        return False
+
+    @staticmethod
+    def _xlib_activate(accessible: Any) -> None:
+        """Send ``_NET_ACTIVE_WINDOW`` via the extracted _xlib_focus module.
+
+        Delegates to :func:`guidewire.backends._xlib_focus.xlib_activate`.
+
+        Raises:
+            ImportError: If ``python-xlib`` is not installed.
+            Exception: If the xlib activation fails.
+        """
+        from guidewire.backends._xlib_focus import xlib_activate
+
+        xlib_activate(accessible)
 
     def snapshot(
         self,

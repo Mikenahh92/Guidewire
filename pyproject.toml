@@ -30,6 +30,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
 ]
+linux-x11 = [
+    "python-xlib",
+]
 windows = [
     "comtypes>=1.4",
 ]

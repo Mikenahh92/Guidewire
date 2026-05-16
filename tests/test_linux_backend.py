@@ -1,5 +1,5 @@
 """Tests for the LinuxBackend skeleton (GW-028), list_windows (GW-029),
-snapshot (GW-031), and element interaction methods (GW-032).
+focus_window (GW-030), snapshot (GW-031), and element interaction methods (GW-032).
 
 Validates:
 - Module can be imported on any platform (guarded pyatspi import).
@@ -12,6 +12,11 @@ Validates:
 - ROLE_DESKTOP_FRAME with empty name is excluded (§5.3).
 - Defunct children are silently skipped (§5.4).
 - BackendUnavailableError raised for disposed backend.
+- focus_window uses AT-SPI activate with xlib fallback (GW-030).
+- Post-activation verification checks STATE_ACTIVE/STATE_FOCUSED (AC-5).
+- focus_window on a disposed backend raises (TC-C02).
+- focus_window is synchronous (TC-009).
+- Full lifecycle: construct → focus → dispose (TC-C01).
 - perform_action dispatches 12 DesktopAction variants via AT-SPI actions.
 - get_element_info returns role, name, states from AT-SPI accessible.
 - is_valid probes element liveness without raising.
@@ -25,15 +30,22 @@ Validates:
 - snapshot() returns a dict compatible with the DesktopElement schema.
 """
 
+import inspect
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
 from guidewire.backends.base import DesktopBackend
 from guidewire.backends.linux import LinuxBackend
-from guidewire.backends.types import NativeHandle
-from guidewire.errors import BackendUnavailableError
+from guidewire.backends.types import DesktopAction, NativeHandle
+from guidewire.errors import (
+    ActionNotSupportedError,
+    BackendUnavailableError,
+    ElementNotFoundError,
+    StaleElementReferenceError,
+    WindowNotFoundError,
+)
 
 # ---------------------------------------------------------------------------
 # Structural tests (run on any platform)
@@ -335,16 +347,8 @@ class TestStubMethods:
             sys.modules["pyatspi"] = original_pyatspi
 
     def test_get_window_info_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
         with pytest.raises(NotImplementedError, match="get_window_info"):
             backend.get_window_info(NativeHandle("fake"))
-
-    def test_focus_window_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
-        with pytest.raises(NotImplementedError, match="focus_window"):
-            backend.focus_window(NativeHandle("fake"))
 
     def test_dispose_sets_disposed_flag(self, backend: LinuxBackend) -> None:
         """dispose() must set _disposed to True without raising."""
@@ -392,18 +396,12 @@ class TestPerformAction:
 
     def test_disposed_raises_stale_element_reference(self, backend: LinuxBackend) -> None:
         """perform_action on disposed backend raises StaleElementReferenceError."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-        from guidewire.errors import StaleElementReferenceError
-
         backend.dispose()
         with pytest.raises(StaleElementReferenceError, match="disposed"):
             backend.perform_action(NativeHandle("fake"), DesktopAction.CLICK)
 
     def test_none_handle_raises_element_not_found(self, backend: LinuxBackend) -> None:
         """perform_action with None handle raises ElementNotFoundError."""
-        from guidewire.backends.types import DesktopAction
-        from guidewire.errors import ElementNotFoundError
-
         with pytest.raises(ElementNotFoundError, match="None"):
             backend.perform_action(None, DesktopAction.CLICK)
 
@@ -411,8 +409,6 @@ class TestPerformAction:
 
     def test_click_via_click_action(self, backend: LinuxBackend) -> None:
         """CLICK dispatches to AT-SPI 'click' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("click")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.CLICK)
         assert result is None
@@ -420,8 +416,6 @@ class TestPerformAction:
 
     def test_click_falls_back_to_press(self, backend: LinuxBackend) -> None:
         """CLICK falls back to 'press' when 'click' is not available."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         mock_action = MagicMock()
         mock_action.get_n_actions.return_value = 1
@@ -434,8 +428,6 @@ class TestPerformAction:
 
     def test_click_falls_back_to_activate(self, backend: LinuxBackend) -> None:
         """CLICK falls back to 'activate' when 'click' and 'press' are not available."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         mock_action = MagicMock()
         mock_action.get_n_actions.return_value = 1
@@ -448,9 +440,6 @@ class TestPerformAction:
 
     def test_click_raises_when_no_action_available(self, backend: LinuxBackend) -> None:
         """CLICK raises ActionNotSupportedError when no click action exists."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-        from guidewire.errors import ActionNotSupportedError
-
         accessible = MagicMock()
         accessible.queryAction.return_value = None
 
@@ -459,9 +448,6 @@ class TestPerformAction:
 
     def test_click_raises_when_action_interface_missing(self, backend: LinuxBackend) -> None:
         """CLICK raises ActionNotSupportedError when queryAction fails."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-        from guidewire.errors import ActionNotSupportedError
-
         accessible = MagicMock()
         accessible.queryAction.side_effect = RuntimeError("no action interface")
 
@@ -472,17 +458,12 @@ class TestPerformAction:
 
     def test_type_requires_text_parameter(self, backend: LinuxBackend) -> None:
         """TYPE raises ActionNotSupportedError without 'text' kwarg."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-        from guidewire.errors import ActionNotSupportedError
-
         accessible = MagicMock()
         with pytest.raises(ActionNotSupportedError, match="text"):
             backend.perform_action(NativeHandle(accessible), DesktopAction.TYPE)
 
     def test_type_calls_grab_focus(self, backend: LinuxBackend) -> None:
         """TYPE sets focus before typing."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         # No grabFocus action available — should not raise
         mock_action = MagicMock()
@@ -496,9 +477,6 @@ class TestPerformAction:
 
     def test_press_key_requires_key_parameter(self, backend: LinuxBackend) -> None:
         """PRESS_KEY raises ActionNotSupportedError without 'key' kwarg."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-        from guidewire.errors import ActionNotSupportedError
-
         accessible = MagicMock()
         with pytest.raises(ActionNotSupportedError, match="key"):
             backend.perform_action(NativeHandle(accessible), DesktopAction.PRESS_KEY)
@@ -507,17 +485,12 @@ class TestPerformAction:
 
     def test_set_value_requires_value_parameter(self, backend: LinuxBackend) -> None:
         """SET_VALUE raises ActionNotSupportedError without 'value' kwarg."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-        from guidewire.errors import ActionNotSupportedError
-
         accessible = MagicMock()
         with pytest.raises(ActionNotSupportedError, match="value"):
             backend.perform_action(NativeHandle(accessible), DesktopAction.SET_VALUE)
 
     def test_set_value_via_text_interface(self, backend: LinuxBackend) -> None:
         """SET_VALUE falls back to Text interface when edit action unavailable."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         accessible.queryAction.return_value = None
         mock_text = MagicMock()
@@ -532,8 +505,6 @@ class TestPerformAction:
 
     def test_select_via_select_action(self, backend: LinuxBackend) -> None:
         """SELECT dispatches to AT-SPI 'select' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("select")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.SELECT)
         assert result is None
@@ -543,8 +514,6 @@ class TestPerformAction:
 
     def test_scroll_via_scroll_action(self, backend: LinuxBackend) -> None:
         """SCROLL dispatches to AT-SPI 'scroll' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("scroll")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.SCROLL)
         assert result is None
@@ -552,8 +521,6 @@ class TestPerformAction:
 
     def test_scroll_falls_back_to_variants(self, backend: LinuxBackend) -> None:
         """SCROLL tries scrollUp/scrollDown variants."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         mock_action = MagicMock()
         mock_action.get_n_actions.return_value = 1
@@ -568,8 +535,6 @@ class TestPerformAction:
 
     def test_get_text_returns_string(self, backend: LinuxBackend) -> None:
         """GET_TEXT returns a string from the Text interface."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         mock_text = MagicMock()
         mock_text.character_count = 5
@@ -582,8 +547,6 @@ class TestPerformAction:
 
     def test_get_text_falls_back_to_name(self, backend: LinuxBackend) -> None:
         """GET_TEXT falls back to accessible name when Text interface unavailable."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         accessible.queryText.return_value = None
         accessible.get_name.return_value = "Element Name"
@@ -593,8 +556,6 @@ class TestPerformAction:
 
     def test_get_text_returns_empty_string_for_no_content(self, backend: LinuxBackend) -> None:
         """GET_TEXT returns empty string when no text content."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = MagicMock()
         mock_text = MagicMock()
         mock_text.character_count = 0
@@ -608,8 +569,6 @@ class TestPerformAction:
 
     def test_toggle_via_toggle_action(self, backend: LinuxBackend) -> None:
         """TOGGLE dispatches to AT-SPI 'toggle' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("toggle")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.TOGGLE)
         assert result is None
@@ -619,8 +578,6 @@ class TestPerformAction:
 
     def test_expand_via_expand_action(self, backend: LinuxBackend) -> None:
         """EXPAND dispatches to AT-SPI 'expand' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("expand")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.EXPAND)
         assert result is None
@@ -628,8 +585,6 @@ class TestPerformAction:
 
     def test_collapse_via_collapse_action(self, backend: LinuxBackend) -> None:
         """COLLAPSE dispatches to AT-SPI 'collapse' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("collapse")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.COLLAPSE)
         assert result is None
@@ -639,8 +594,6 @@ class TestPerformAction:
 
     def test_increment_via_increment_action(self, backend: LinuxBackend) -> None:
         """INCREMENT dispatches to AT-SPI 'increment' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("increment")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.INCREMENT)
         assert result is None
@@ -648,8 +601,6 @@ class TestPerformAction:
 
     def test_decrement_via_decrement_action(self, backend: LinuxBackend) -> None:
         """DECREMENT dispatches to AT-SPI 'decrement' action."""
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
         accessible = self._mock_accessible_with_action("decrement")
         result = backend.perform_action(NativeHandle(accessible), DesktopAction.DECREMENT)
         assert result is None
@@ -712,8 +663,6 @@ class TestGetElementInfo:
 
     def test_returns_dict_with_required_keys(self, backend: LinuxBackend) -> None:
         """get_element_info returns dict with role, name, states."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = self._mock_accessible()
         result = backend.get_element_info(NativeHandle(accessible))
         assert isinstance(result, dict)
@@ -723,65 +672,47 @@ class TestGetElementInfo:
 
     def test_role_is_normalized(self, backend: LinuxBackend) -> None:
         """get_element_info normalizes AT-SPI role via resolve_role."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = self._mock_accessible(role_name="push button")
         result = backend.get_element_info(NativeHandle(accessible))
         assert result["role"] == "button"
 
     def test_role_falls_back_to_raw(self, backend: LinuxBackend) -> None:
         """get_element_info falls back to raw role when not in mapping."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = self._mock_accessible(role_name="some unknown role")
         result = backend.get_element_info(NativeHandle(accessible))
         assert result["role"] == "some unknown role"
 
     def test_name_is_returned(self, backend: LinuxBackend) -> None:
         """get_element_info returns the accessible name."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = self._mock_accessible(name="My Button")
         result = backend.get_element_info(NativeHandle(accessible))
         assert result["name"] == "My Button"
 
     def test_name_none_when_empty(self, backend: LinuxBackend) -> None:
         """get_element_info returns None for empty name."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = self._mock_accessible(name="")
         result = backend.get_element_info(NativeHandle(accessible))
         assert result["name"] is None
 
     def test_states_is_dict(self, backend: LinuxBackend) -> None:
         """get_element_info returns states as a dict."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = self._mock_accessible()
         result = backend.get_element_info(NativeHandle(accessible))
         assert isinstance(result["states"], dict)
 
     def test_disposed_raises_stale_element_reference(self, backend: LinuxBackend) -> None:
         """get_element_info on disposed backend raises StaleElementReferenceError."""
-        from guidewire.backends.types import NativeHandle
-        from guidewire.errors import StaleElementReferenceError
-
         backend.dispose()
         with pytest.raises(StaleElementReferenceError, match="disposed"):
             backend.get_element_info(NativeHandle("fake"))
 
     def test_none_handle_raises_element_not_found(self, backend: LinuxBackend) -> None:
         """get_element_info with None handle raises ElementNotFoundError."""
-        from guidewire.errors import ElementNotFoundError
-
         with pytest.raises(ElementNotFoundError, match="None"):
             backend.get_element_info(None)
 
     def test_invalid_handle_raises_element_not_found(self, backend: LinuxBackend) -> None:
         """get_element_info with non-accessible handle raises ElementNotFoundError."""
-        from guidewire.backends.types import NativeHandle
-        from guidewire.errors import ElementNotFoundError
-
         with pytest.raises(ElementNotFoundError):
             backend.get_element_info(NativeHandle("not an accessible"))
 
@@ -819,15 +750,11 @@ class TestIsValid:
 
     def test_returns_true_for_valid_element(self, backend: LinuxBackend) -> None:
         """is_valid returns True for a responsive accessible."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = MagicMock()
         assert backend.is_valid(NativeHandle(accessible)) is True
 
     def test_returns_false_for_defunct_element(self, backend: LinuxBackend) -> None:
         """is_valid returns False when getState raises."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = MagicMock()
         accessible.getState.side_effect = RuntimeError("defunct")
         assert backend.is_valid(NativeHandle(accessible)) is False
@@ -838,8 +765,6 @@ class TestIsValid:
 
     def test_returns_false_when_disposed(self, backend: LinuxBackend) -> None:
         """is_valid returns False when backend is disposed."""
-        from guidewire.backends.types import NativeHandle
-
         accessible = MagicMock()
         backend.dispose()
         assert backend.is_valid(NativeHandle(accessible)) is False
@@ -920,16 +845,12 @@ class TestFindElements:
 
     def test_no_filters_returns_empty(self, backend: LinuxBackend) -> None:
         """find_elements returns empty list when no role or name filter."""
-        from guidewire.backends.types import NativeHandle
-
         window = self._make_tree([("push button", "OK")])
         result = backend.find_elements(NativeHandle(window))
         assert result == []
 
     def test_matches_by_role(self, backend: LinuxBackend) -> None:
         """find_elements matches elements by normalized role."""
-        from guidewire.backends.types import NativeHandle
-
         window = self._make_tree([
             ("push button", "OK"),
             ("text", "Label"),
@@ -940,8 +861,6 @@ class TestFindElements:
 
     def test_matches_by_name_substring(self, backend: LinuxBackend) -> None:
         """find_elements matches elements by case-insensitive name substring."""
-        from guidewire.backends.types import NativeHandle
-
         window = self._make_tree([
             ("push button", "Save File"),
             ("push button", "Cancel"),
@@ -952,8 +871,6 @@ class TestFindElements:
 
     def test_matches_by_role_and_name(self, backend: LinuxBackend) -> None:
         """find_elements matches elements satisfying both role and name."""
-        from guidewire.backends.types import NativeHandle
-
         window = self._make_tree([
             ("push button", "Save"),
             ("text", "Save"),
@@ -964,24 +881,18 @@ class TestFindElements:
 
     def test_no_matches_returns_empty(self, backend: LinuxBackend) -> None:
         """find_elements returns empty list when nothing matches."""
-        from guidewire.backends.types import NativeHandle
-
         window = self._make_tree([("push button", "OK")])
         result = backend.find_elements(NativeHandle(window), role="checkbox")
         assert result == []
 
     def test_disposed_raises_backend_unavailable(self, backend: LinuxBackend) -> None:
         """find_elements on disposed backend raises BackendUnavailableError."""
-        from guidewire.backends.types import NativeHandle
-
         backend.dispose()
         with pytest.raises(BackendUnavailableError, match="disposed"):
             backend.find_elements(NativeHandle("fake"), role="button")
 
     def test_silently_skips_defunct_children(self, backend: LinuxBackend) -> None:
         """find_elements silently skips children that raise exceptions."""
-        from guidewire.backends.types import NativeHandle
-
         window = MagicMock()
 
         # First child is defunct (raises on getRoleName)
@@ -1570,3 +1481,538 @@ def _patch_list_windows_children(backend: LinuxBackend, mock_pyatspi: MagicMock)
                 setattr(live_mock, attr, getattr(mock_pyatspi, attr))
     mock_desktop = mock_pyatspi.Registry.getDesktop.return_value
     backend._desktop.children = mock_desktop.children
+
+
+# ---------------------------------------------------------------------------
+# focus_window tests (GW-030)
+# ---------------------------------------------------------------------------
+
+# Fake pyatspi module with state constants needed by _verify_focus (AC-5).
+_FAKE_PYATSPI = type(
+    "pyatspi",
+    (),
+    {
+        "Accessible": type("Accessible", (), {}),
+        "STATE_ACTIVE": 0,
+        "STATE_FOCUSED": 1,
+    },
+)
+
+
+def _make_backend() -> LinuxBackend:
+    """Create a LinuxBackend instance bypassing the platform guard."""
+    with (
+        patch("sys.platform", "linux"),
+        patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+    ):
+        b = LinuxBackend.__new__(LinuxBackend)
+        b._disposed = False
+        return b
+
+
+def _make_accessible(focused: bool = True) -> MagicMock:
+    """Build a fake pyatspi.Accessible that passes _resolve_accessible.
+
+    Args:
+        focused: If True, get_state_set().contains() returns True for
+            STATE_ACTIVE and STATE_FOCUSED (simulating a focused window).
+    """
+    # Make MagicMock inherit from the fake Accessible so isinstance() passes.
+    fake_cls = type(
+        "FakeAccessible",
+        (_FAKE_PYATSPI.Accessible, MagicMock),  # type: ignore[misc]
+        {},
+    )
+    fake = fake_cls()
+    fake.name = "TestWindow"
+    # Set up get_state_set for post-activation verification.
+    fake_state_set = MagicMock()
+    fake_state_set.contains.return_value = focused
+    fake.get_state_set.return_value = fake_state_set
+    return fake
+
+
+class TestFocusWindowResolve:
+    """Verify _resolve_accessible validation logic."""
+
+    def test_raises_window_not_found_for_non_accessible(self) -> None:
+        """Must raise WindowNotFoundError when handle is not a pyatspi.Accessible."""
+        backend = _make_backend()
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            pytest.raises(WindowNotFoundError, match="not a valid pyatspi"),
+        ):
+            backend.focus_window(NativeHandle("not-an-accessible"))
+
+    def test_raises_window_not_found_for_destroyed_accessible(self) -> None:
+        """Must raise WindowNotFoundError when accessible.name raises."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible()
+        # Make name access raise via PropertyMock on the type.
+        type(fake_accessible).name = PropertyMock(
+            side_effect=RuntimeError("proxy destroyed"),
+        )
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            pytest.raises(WindowNotFoundError, match="destroyed"),
+        ):
+            backend.focus_window(fake_accessible)
+
+
+class TestFocusWindowAtSpiActivate:
+    """Verify AT-SPI activate primary path."""
+
+    def test_activates_via_atspi_activate_action(self) -> None:
+        """Must call doAction(0) and verify focus on the activate action interface."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=True)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            backend.focus_window(fake_accessible)
+
+        fake_action_iface.doAction.assert_called_once_with(0)
+        # Post-activation verification must have been called.
+        fake_accessible.get_state_set.assert_called()
+
+    def test_activates_via_dbus_prefixed_action_name(self) -> None:
+        """Must match 'default.activate' and call doAction on real GNOME.
+
+        On real GNOME/X11, AT-SPI action names are D-Bus prefixed
+        (e.g. 'default.activate' at index 10).  _get_action must match
+        the suffix so focus_window uses the primary AT-SPI path.
+        """
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=True)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 35
+        # Simulate a real GNOME window with many actions including 'default.activate'.
+        fake_action_iface.get_action_name.return_value = "default.activate"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            backend.focus_window(fake_accessible)
+
+        fake_action_iface.doAction.assert_called_once_with(0)
+        fake_accessible.get_state_set.assert_called()
+
+    def test_falls_through_when_verification_fails_after_activate(self) -> None:
+        """Must fall through to xlib when post-activation verification fails.
+
+        Both AT-SPI and xlib activate, but verification fails on both, so
+        ActionNotSupportedError is raised.
+        """
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+            ) as mock_xlib,
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+        # AT-SPI activate was attempted.
+        fake_action_iface.doAction.assert_called_once_with(0)
+        # Verification failed, so xlib fallback was tried.
+        mock_xlib.assert_called_once_with(fake_accessible)
+
+    def test_skips_when_no_action_interface(self) -> None:
+        """Must fall through when get_action returns None."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+                side_effect=ImportError("no xlib"),
+            ),
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+    def test_skips_when_activate_not_in_action_names(self) -> None:
+        """Must fall through when activate is not among available actions."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "click"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+                side_effect=ImportError("no xlib"),
+            ),
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+    def test_falls_through_when_do_action_raises(self) -> None:
+        """Must fall through to xlib when doAction raises."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_action_iface.doAction.side_effect = RuntimeError("AT-SPI error")
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+                side_effect=ImportError("no xlib"),
+            ),
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+
+class TestFocusWindowXlibFallback:
+    """Verify _NET_ACTIVE_WINDOW xlib fallback path."""
+
+    def test_uses_xlib_when_atspi_activate_unavailable(self) -> None:
+        """Must call _xlib_activate when AT-SPI activate is not supported."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+            ) as mock_xlib,
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+        mock_xlib.assert_called_once_with(fake_accessible)
+
+    def test_uses_xlib_when_atspi_do_action_fails(self) -> None:
+        """Must call _xlib_activate when AT-SPI doAction raises."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_action_iface.doAction.side_effect = RuntimeError("DBus error")
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+            ) as mock_xlib,
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+        mock_xlib.assert_called_once_with(fake_accessible)
+
+    def test_xlib_succeeds_when_verification_passes(self) -> None:
+        """Must return after xlib fallback when verification confirms focus."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=True)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+            ) as mock_xlib,
+        ):
+            backend.focus_window(fake_accessible)
+
+        mock_xlib.assert_called_once_with(fake_accessible)
+
+    def test_xlib_import_error_falls_through_to_action_error(self) -> None:
+        """Must raise ActionNotSupportedError when xlib is not installed."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+                side_effect=ImportError("No module named 'Xlib'"),
+            ),
+            pytest.raises(ActionNotSupportedError, match="python-xlib"),
+        ):
+            backend.focus_window(fake_accessible)
+
+    def test_xlib_runtime_error_falls_through_to_action_error(self) -> None:
+        """Must raise ActionNotSupportedError when xlib activation fails."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+                side_effect=RuntimeError("Display connection failed"),
+            ),
+            pytest.raises(ActionNotSupportedError, match="python-xlib"),
+        ):
+            backend.focus_window(fake_accessible)
+
+    def test_xlib_verification_fails_raises_action_error(self) -> None:
+        """Must raise ActionNotSupportedError when xlib activates but focus unconfirmed."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+            ),
+            pytest.raises(ActionNotSupportedError, match="python-xlib"),
+        ):
+            backend.focus_window(fake_accessible)
+
+
+class TestFocusWindowActionError:
+    """Verify ActionNotSupportedError when both paths fail."""
+
+    def test_raises_action_not_supported_when_both_paths_fail(self) -> None:
+        """Must raise ActionNotSupportedError with helpful message."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+        fake_accessible.get_action.return_value = None
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+                side_effect=ImportError("no xlib"),
+            ),
+            pytest.raises(ActionNotSupportedError) as exc_info,
+        ):
+            backend.focus_window(fake_accessible)
+
+        assert exc_info.value.error_code == "action_not_supported"
+        assert "python-xlib" in exc_info.value.message
+
+
+class TestPostActivationVerification:
+    """Verify AC-5 post-activation verification logic."""
+
+    def test_verify_focus_returns_true_when_state_active(self) -> None:
+        """Must return True when state set contains STATE_ACTIVE."""
+        accessible = MagicMock()
+        state_set = MagicMock()
+        state_set.contains.side_effect = lambda s: s == _FAKE_PYATSPI.STATE_ACTIVE
+        accessible.get_state_set.return_value = state_set
+
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            assert LinuxBackend._verify_focus(accessible) is True
+
+    def test_verify_focus_returns_true_when_state_focused(self) -> None:
+        """Must return True when state set contains STATE_FOCUSED."""
+        accessible = MagicMock()
+        state_set = MagicMock()
+        state_set.contains.side_effect = lambda s: s == _FAKE_PYATSPI.STATE_FOCUSED
+        accessible.get_state_set.return_value = state_set
+
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            assert LinuxBackend._verify_focus(accessible) is True
+
+    def test_verify_focus_returns_false_when_neither_state(self) -> None:
+        """Must return False when neither STATE_ACTIVE nor STATE_FOCUSED."""
+        accessible = MagicMock()
+        state_set = MagicMock()
+        state_set.contains.return_value = False
+        accessible.get_state_set.return_value = state_set
+
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            assert LinuxBackend._verify_focus(accessible) is False
+
+    def test_verify_focus_returns_false_on_exception(self) -> None:
+        """Must return False when get_state_set raises."""
+        accessible = MagicMock()
+        accessible.get_state_set.side_effect = RuntimeError("DBus error")
+
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            assert LinuxBackend._verify_focus(accessible) is False
+
+    def test_atspi_activate_falls_through_when_verification_fails(self) -> None:
+        """AC-5: Must fall through to xlib when AT-SPI activate succeeds but
+        post-activation verification fails. Both paths fail verification so
+        ActionNotSupportedError is raised."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=False)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        with (
+            patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}),
+            patch(
+                "guidewire.backends.linux.LinuxBackend._xlib_activate",
+            ) as mock_xlib,
+            pytest.raises(ActionNotSupportedError),
+        ):
+            backend.focus_window(fake_accessible)
+
+        # AT-SPI activate was called but verification failed, so xlib was tried.
+        fake_action_iface.doAction.assert_called_once_with(0)
+        mock_xlib.assert_called_once_with(fake_accessible)
+
+
+class TestGetActionHelper:
+    """Verify _get_action helper logic."""
+
+    def test_returns_none_when_no_action_interface(self) -> None:
+        accessible = MagicMock()
+        accessible.get_action.return_value = None
+        assert LinuxBackend._get_action(accessible, "activate") is None
+
+    def test_returns_action_when_found(self) -> None:
+        fake_iface = MagicMock()
+        fake_iface.get_n_actions.return_value = 2
+        fake_iface.get_action_name.side_effect = ["click", "activate"]
+        accessible = MagicMock()
+        accessible.get_action.return_value = fake_iface
+        result = LinuxBackend._get_action(accessible, "activate")
+        assert result is fake_iface
+
+    def test_returns_none_when_name_not_matched(self) -> None:
+        fake_iface = MagicMock()
+        fake_iface.get_n_actions.return_value = 1
+        fake_iface.get_action_name.return_value = "click"
+        accessible = MagicMock()
+        accessible.get_action.return_value = fake_iface
+        assert LinuxBackend._get_action(accessible, "activate") is None
+
+    def test_returns_none_when_get_action_raises(self) -> None:
+        accessible = MagicMock()
+        accessible.get_action.side_effect = RuntimeError("DBus error")
+        assert LinuxBackend._get_action(accessible, "activate") is None
+
+    def test_matches_dbus_prefixed_action_name(self) -> None:
+        """Must match 'default.activate' when searching for 'activate'.
+
+        Real AT-SPI registries on GNOME expose D-Bus prefixed action names
+        like 'default.activate' instead of bare 'activate'.
+        """
+        fake_iface = MagicMock()
+        fake_iface.get_n_actions.return_value = 2
+        fake_iface.get_action_name.side_effect = ["click", "default.activate"]
+        accessible = MagicMock()
+        accessible.get_action.return_value = fake_iface
+        result = LinuxBackend._get_action(accessible, "activate")
+        assert result is fake_iface
+
+    def test_matches_dbus_prefix_with_multiple_dots(self) -> None:
+        """Must match 'org.a11y.activate' when searching for 'activate'."""
+        fake_iface = MagicMock()
+        fake_iface.get_n_actions.return_value = 1
+        fake_iface.get_action_name.return_value = "org.a11y.activate"
+        accessible = MagicMock()
+        accessible.get_action.return_value = fake_iface
+        result = LinuxBackend._get_action(accessible, "activate")
+        assert result is fake_iface
+
+    def test_prefers_exact_match_over_suffix_match(self) -> None:
+        """When both 'activate' and 'default.activate' exist, the first
+        match wins (iterates in AT-SPI order)."""
+        fake_iface = MagicMock()
+        fake_iface.get_n_actions.return_value = 2
+        fake_iface.get_action_name.side_effect = ["default.activate", "activate"]
+        accessible = MagicMock()
+        accessible.get_action.return_value = fake_iface
+        result = LinuxBackend._get_action(accessible, "activate")
+        assert result is fake_iface
+
+
+# ---------------------------------------------------------------------------
+# Additional test cases from review feedback
+# ---------------------------------------------------------------------------
+
+
+class TestFocusWindowDisposedBackend:
+    """TC-C02: focus_window on a disposed backend."""
+
+    def test_focus_window_on_disposed_backend(self) -> None:
+        """Must still resolve the accessible and attempt activation even after dispose.
+
+        Note: dispose() only sets _disposed=True; focus_window does not currently
+        check the disposed flag (no dispose guard). This test documents current
+        behavior — a future story may add a disposed guard.
+        """
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=True)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        # Dispose first.
+        backend.dispose()
+        assert backend._disposed
+
+        # focus_window should still work (no disposed guard yet).
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            backend.focus_window(fake_accessible)
+
+        fake_action_iface.doAction.assert_called_once_with(0)
+
+
+class TestFocusWindowSynchronous:
+    """TC-009: Explicit synchronous execution assertion."""
+
+    def test_focus_window_is_synchronous(self) -> None:
+        """focus_window must be a regular (non-coroutine) function."""
+        assert not inspect.iscoroutinefunction(LinuxBackend.focus_window)
+
+
+class TestFocusWindowLifecycle:
+    """TC-C01: Full lifecycle test (construct → focus → dispose)."""
+
+    def test_lifecycle_construct_focus_dispose(self) -> None:
+        """Backend can be constructed, used for focus_window, and disposed."""
+        backend = _make_backend()
+        fake_accessible = _make_accessible(focused=True)
+
+        fake_action_iface = MagicMock()
+        fake_action_iface.get_n_actions.return_value = 1
+        fake_action_iface.get_action_name.return_value = "activate"
+        fake_accessible.get_action.return_value = fake_action_iface
+
+        # Verify initial state.
+        assert not backend._disposed
+
+        # Focus window.
+        with patch.dict("sys.modules", {"pyatspi": _FAKE_PYATSPI}):
+            backend.focus_window(fake_accessible)
+
+        fake_action_iface.doAction.assert_called_once_with(0)
+
+        # Dispose.
+        backend.dispose()
+        assert backend._disposed
