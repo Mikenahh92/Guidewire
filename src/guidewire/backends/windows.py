@@ -5,8 +5,11 @@ COM API.  The ``comtypes`` import is guarded so that this module can be
 imported on non-Windows platforms without error (the constructor will raise
 :class:`BackendUnavailableError` at instantiation time).
 
-Skeleton implementation — all 9 abstract methods are present but raise
-:exc:`NotImplementedError` pending concrete implementation in later stories.
+Implementation status:
+- ``list_windows`` — implemented (GW-020)
+- ``get_window_info``, ``focus_window`` — pending (GW-021)
+- ``snapshot``, ``find_elements`` — pending (GW-022)
+- ``perform_action``, ``get_element_info``, ``is_valid`` — pending (GW-023)
 """
 
 import sys
@@ -19,6 +22,13 @@ from guidewire.errors import BackendUnavailableError
 __all__ = [
     "WindowsBackend",
 ]
+
+# -- UIA constants (architecture §5: module-level) ----------------------------
+
+_UIA_TREE_SCOPE_CHILDREN = 2  # UIA TreeScope_Children
+_UIA_CONTROL_TYPE_PROPERTY_ID = 30003  # UIA_PropertyId_UIA_ControlTypePropertyId
+_UIA_WINDOW_CONTROL_TYPE_ID = 50032  # UIA_ControlType_Window (0xC370)
+_UIA_IS_OFFSCREEN_PROPERTY_ID = 30022  # UIA_PropertyId_UIA_IsOffscreenPropertyId
 
 
 class WindowsBackend(DesktopBackend):
@@ -66,13 +76,43 @@ class WindowsBackend(DesktopBackend):
     def list_windows(self) -> list[NativeHandle]:
         """List all visible top-level application windows.
 
-        .. todo:: Implement via ``IUIAutomation.GetRootElement`` and
-           ``TreeScope_Children`` to enumerate desktop children.
+        Uses ``IUIAutomation.GetRootElement`` to obtain the desktop root,
+        then ``FindAll`` with ``TreeScope_Children`` and a
+        ``ControlType.Window`` property condition to enumerate top-level
+        windows.  Off-screen windows are filtered out.
 
         Returns:
-            List of opaque native window handles.
+            List of opaque native window handles (COM pointers to
+            ``IUIAutomationElement`` objects).
+
+        Raises:
+            BackendUnavailableError: If the backend is disposed or UIA
+                COM calls fail.
         """
-        raise NotImplementedError("list_windows not yet implemented — see GW-020")
+        if self._disposed:
+            raise BackendUnavailableError("WindowsBackend has been disposed")
+
+        import comtypes  # noqa: F401
+
+        try:
+            root = self._uia.GetRootElement()
+            condition = self._uia.CreatePropertyCondition(
+                _UIA_CONTROL_TYPE_PROPERTY_ID,
+                _UIA_WINDOW_CONTROL_TYPE_ID,
+            )
+            found = self._uia.FindAll(_UIA_TREE_SCOPE_CHILDREN, root, condition)
+            count = found.Length
+            result: list[NativeHandle] = []
+            for i in range(count):
+                element = found.GetElement(i)
+                is_offscreen = element.GetCurrentPropertyValue(_UIA_IS_OFFSCREEN_PROPERTY_ID)
+                if not is_offscreen:
+                    result.append(NativeHandle(element))
+            return result
+        except BackendUnavailableError:
+            raise
+        except Exception as exc:
+            raise BackendUnavailableError(f"Failed to enumerate windows via UIA: {exc}") from exc
 
     def get_window_info(self, window: NativeHandle) -> dict[str, Any]:
         """Return window metadata as a dict.

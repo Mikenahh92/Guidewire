@@ -1,11 +1,14 @@
-"""Tests for the WindowsBackend (GW-019 skeleton).
+"""Tests for the WindowsBackend skeleton (GW-019) and list_windows (GW-020).
 
 Validates:
 - Module can be imported on any platform (guarded comtypes import).
 - WindowsBackend is a concrete subclass of DesktopBackend.
 - Platform guard raises BackendUnavailableError on non-Windows systems.
 - comtypes-missing guard raises BackendUnavailableError.
-- 8 abstract methods raise NotImplementedError (remaining stubs).
+- list_windows() enumerates visible top-level windows via UIA COM.
+- Off-screen windows are filtered out.
+- COM errors are translated to BackendUnavailableError.
+- Remaining 8 abstract methods raise NotImplementedError (pending stories).
 - dispose() performs full COM cleanup and is idempotent.
 - Constructor signature matches DesktopBackend contract.
 
@@ -158,8 +161,60 @@ class TestStubMethods:
             b._disposed = False
             return b
 
-    def test_list_windows_raises_not_implemented(self, backend: WindowsBackend) -> None:
-        with pytest.raises(NotImplementedError, match="list_windows"):
+    def test_list_windows_returns_handles(self, backend: WindowsBackend) -> None:
+        """list_windows() should return a list of NativeHandle objects."""
+        mock_element1 = MagicMock()
+        mock_element1.GetCurrentPropertyValue.return_value = False
+        mock_element2 = MagicMock()
+        mock_element2.GetCurrentPropertyValue.return_value = False
+        mock_array = MagicMock()
+        mock_array.Length = 2
+        mock_array.GetElement.side_effect = [mock_element1, mock_element2]
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        result = backend.list_windows()
+        assert isinstance(result, list)
+        assert len(result) == 2
+        for item in result:
+            # NativeHandle is a NewType over Any, wrapping the COM element
+            assert item is not None
+
+    def test_list_windows_filters_offscreen(self, backend: WindowsBackend) -> None:
+        """list_windows() should exclude off-screen windows."""
+        visible = MagicMock()
+        visible.GetCurrentPropertyValue.return_value = False  # not offscreen
+        hidden = MagicMock()
+        hidden.GetCurrentPropertyValue.return_value = True  # offscreen
+        mock_array = MagicMock()
+        mock_array.Length = 2
+        mock_array.GetElement.side_effect = [visible, hidden]
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        result = backend.list_windows()
+        assert len(result) == 1
+
+    def test_list_windows_empty(self, backend: WindowsBackend) -> None:
+        """list_windows() should return empty list when no windows found."""
+        mock_array = MagicMock()
+        mock_array.Length = 0
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        result = backend.list_windows()
+        assert result == []
+
+    def test_list_windows_com_error_raises_backend_unavailable(
+        self, backend: WindowsBackend
+    ) -> None:
+        """COM errors in list_windows should be translated to BackendUnavailableError."""
+        backend._uia.GetRootElement.side_effect = RuntimeError("COM error")
+
+        with pytest.raises(BackendUnavailableError, match="enumerate windows"):
             backend.list_windows()
 
     def test_get_window_info_raises_not_implemented(self, backend: WindowsBackend) -> None:
@@ -227,3 +282,192 @@ class TestStubMethods:
         assert backend._disposed is True
         assert backend._com_initialized is False
         assert backend._uia is None
+
+
+# ---------------------------------------------------------------------------
+# list_windows P0 targeted tests (QA F2 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestListWindowsP0:
+    """P0 test-design cases for list_windows (TC-LW-004, 005, 006, 021)."""
+
+    @pytest.fixture()
+    def backend(self) -> WindowsBackend:
+        """Create a WindowsBackend bypassing the platform guard."""
+        with (
+            patch("sys.platform", "win32"),
+            patch.dict("sys.modules", {"comtypes": type("mod", (), {})}),
+        ):
+            b = WindowsBackend.__new__(WindowsBackend)
+            b._com_initialized = True
+            b._uia = MagicMock()
+            b._disposed = False
+            return b
+
+    def test_tc_lw_004_get_root_element_called_once(self, backend: WindowsBackend) -> None:
+        """TC-LW-004: GetRootElement must be called exactly once."""
+        mock_array = MagicMock()
+        mock_array.Length = 0
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        backend.list_windows()
+
+        backend._uia.GetRootElement.assert_called_once()
+
+    def test_tc_lw_005_control_type_constant_is_50032(self, backend: WindowsBackend) -> None:
+        """TC-LW-005: CreatePropertyCondition must use control type 50032 (0xC370)."""
+        from guidewire.backends.windows import _UIA_WINDOW_CONTROL_TYPE_ID
+
+        assert _UIA_WINDOW_CONTROL_TYPE_ID == 50032, (
+            "UIA Window control type must be 50032 (0xC370), not 50036 (TitleBar)"
+        )
+
+        mock_array = MagicMock()
+        mock_array.Length = 0
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        backend.list_windows()
+
+        backend._uia.CreatePropertyCondition.assert_called_once()
+        args, _kwargs = backend._uia.CreatePropertyCondition.call_args
+        # Second positional arg is the control type value
+        assert args[1] == 50032, f"Expected 50032, got {args[1]}"
+
+    def test_tc_lw_006_tree_scope_children_used(self, backend: WindowsBackend) -> None:
+        """TC-LW-006: FindAll must be called with TreeScope_Children (= 2)."""
+        from guidewire.backends.windows import _UIA_TREE_SCOPE_CHILDREN
+
+        assert _UIA_TREE_SCOPE_CHILDREN == 2
+
+        mock_array = MagicMock()
+        mock_array.Length = 0
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        backend.list_windows()
+
+        args, _kwargs = backend._uia.FindAll.call_args
+        assert args[0] == 2, f"Expected TreeScope_Children=2, got {args[0]}"
+
+    def test_tc_lw_021_disposed_backend_raises_backend_unavailable(
+        self, backend: WindowsBackend
+    ) -> None:
+        """TC-LW-021: list_windows on disposed backend raises BackendUnavailableError."""
+        backend.dispose()
+
+        with pytest.raises(BackendUnavailableError, match="disposed"):
+            backend.list_windows()
+
+
+# ---------------------------------------------------------------------------
+# list_windows P1 targeted tests (QA F3 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestListWindowsP1:
+    """P1 test-design cases for list_windows."""
+
+    @pytest.fixture()
+    def backend(self) -> WindowsBackend:
+        """Create a WindowsBackend bypassing the platform guard."""
+        with (
+            patch("sys.platform", "win32"),
+            patch.dict("sys.modules", {"comtypes": type("mod", (), {})}),
+        ):
+            b = WindowsBackend.__new__(WindowsBackend)
+            b._com_initialized = True
+            b._uia = MagicMock()
+            b._disposed = False
+            return b
+
+    def test_create_property_condition_uses_control_type_property_id(
+        self, backend: WindowsBackend
+    ) -> None:
+        """CreatePropertyCondition first arg must be UIA_ControlTypePropertyId (30003)."""
+        from guidewire.backends.windows import _UIA_CONTROL_TYPE_PROPERTY_ID
+
+        assert _UIA_CONTROL_TYPE_PROPERTY_ID == 30003
+
+        mock_array = MagicMock()
+        mock_array.Length = 0
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        backend.list_windows()
+
+        args, _kwargs = backend._uia.CreatePropertyCondition.call_args
+        assert args[0] == 30003, f"Expected ControlTypePropertyId=30003, got {args[0]}"
+
+    def test_is_offscreen_property_uses_correct_constant(self, backend: WindowsBackend) -> None:
+        """GetCurrentPropertyValue must be called with UIA_IsOffscreenPropertyId (30022)."""
+        from guidewire.backends.windows import _UIA_IS_OFFSCREEN_PROPERTY_ID
+
+        assert _UIA_IS_OFFSCREEN_PROPERTY_ID == 30022
+
+        mock_element = MagicMock()
+        mock_element.GetCurrentPropertyValue.return_value = False
+        mock_array = MagicMock()
+        mock_array.Length = 1
+        mock_array.GetElement.return_value = mock_element
+        backend._uia.GetRootElement.return_value = MagicMock()
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        backend.list_windows()
+
+        mock_element.GetCurrentPropertyValue.assert_called_once_with(30022)
+
+    def test_disposed_error_message_is_descriptive(self, backend: WindowsBackend) -> None:
+        """Disposed backend error must mention 'disposed' and 'WindowsBackend'."""
+        backend.dispose()
+
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            backend.list_windows()
+        msg = str(exc_info.value).lower()
+        assert "disposed" in msg
+        assert "windowsbackend" in msg
+
+    def test_findall_receives_root_element_as_second_arg(self, backend: WindowsBackend) -> None:
+        """FindAll must receive the root element as its second positional argument."""
+        mock_root = MagicMock()
+        mock_array = MagicMock()
+        mock_array.Length = 0
+        backend._uia.GetRootElement.return_value = mock_root
+        backend._uia.CreatePropertyCondition.return_value = MagicMock()
+        backend._uia.FindAll.return_value = mock_array
+
+        backend.list_windows()
+
+        args, _kwargs = backend._uia.FindAll.call_args
+        assert args[1] is mock_root, "FindAll second arg must be the root element"
+
+    def test_backend_unavailable_error_not_wrapped(self, backend: WindowsBackend) -> None:
+        """If a BackendUnavailableError occurs inside COM call, it must not be double-wrapped."""
+        backend._uia.GetRootElement.side_effect = BackendUnavailableError("already failed")
+
+        with pytest.raises(BackendUnavailableError, match="already failed"):
+            backend.list_windows()
+
+    def test_module_constants_are_immutable_integers(self) -> None:
+        """Module-level UIA constants must be plain integers (not expressions)."""
+        from guidewire.backends.windows import (
+            _UIA_CONTROL_TYPE_PROPERTY_ID,
+            _UIA_IS_OFFSCREEN_PROPERTY_ID,
+            _UIA_TREE_SCOPE_CHILDREN,
+            _UIA_WINDOW_CONTROL_TYPE_ID,
+        )
+
+        for name, val in [
+            ("_UIA_TREE_SCOPE_CHILDREN", _UIA_TREE_SCOPE_CHILDREN),
+            ("_UIA_CONTROL_TYPE_PROPERTY_ID", _UIA_CONTROL_TYPE_PROPERTY_ID),
+            ("_UIA_WINDOW_CONTROL_TYPE_ID", _UIA_WINDOW_CONTROL_TYPE_ID),
+            ("_UIA_IS_OFFSCREEN_PROPERTY_ID", _UIA_IS_OFFSCREEN_PROPERTY_ID),
+        ]:
+            assert isinstance(val, int), f"{name} must be int, got {type(val).__name__}"
