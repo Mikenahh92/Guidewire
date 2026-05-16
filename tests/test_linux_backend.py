@@ -1064,11 +1064,29 @@ class TestSnapshot:
         acc.get_name.return_value = name
         acc.get_description.return_value = description
 
-        # States
+        # States — _extract_element_node uses contains() with pyatspi
+        # state constants.  Set up contains() to return True for states
+        # that are True in the dict, False otherwise.
         state_names = list(states.keys()) if states else []
         mock_state_set = MagicMock()
         mock_state_set.get_states.return_value = state_names
-        mock_state_set.contains.return_value = False  # not used by snapshot
+        if states:
+            # Map each unique sentinel constant to its corresponding value.
+            # _extract_element_node calls contains() once per known state
+            # key, so we track which constant maps to which key by the
+            # iteration order of _state_key_to_constant in the source.
+            # Use a counter-based side_effect: first call corresponds to
+            # "enabled", second to "focused", etc.
+            _ordered_values = []
+            for _key in [
+                "enabled", "focused", "selected", "checked", "expanded",
+                "showing", "visible", "offscreen", "read-only", "required",
+                "editable", "indeterminate",
+            ]:
+                _ordered_values.append(states.get(_key, False))
+            mock_state_set.contains.side_effect = list(_ordered_values)
+        else:
+            mock_state_set.contains.return_value = False
         acc.getState.return_value = mock_state_set
 
         # Bounds
@@ -1099,11 +1117,13 @@ class TestSnapshot:
         else:
             acc.get_value.return_value = None
 
-        # Actions
+        # Actions — _extract_element_node uses new-style pyatspi API
         if actions:
             mock_action = MagicMock()
-            mock_action.nActions = len(actions)
-            mock_action.getName.side_effect = lambda i: actions[i] if i < len(actions) else None
+            mock_action.get_n_actions.return_value = len(actions)
+            mock_action.get_action_name.side_effect = (
+                lambda i: actions[i] if i < len(actions) else None
+            )
             acc.get_action.return_value = mock_action
         else:
             acc.get_action.return_value = None
@@ -1165,7 +1185,8 @@ class TestSnapshot:
         """snapshot() must extract and normalize states.
 
         States dict keys represent present states (value=True in AT-SPI).
-        Absent states default to None in ElementStates.
+        Absent states are explicitly set to False so consumers can
+        distinguish "disabled" from "unknown".
         """
         root = self._make_accessible(
             role="push button",
@@ -1176,8 +1197,8 @@ class TestSnapshot:
         states = result["states"]
         assert states["enabled"] is True
         assert states["visible"] is True
-        # 'focused' was not in the states dict, so it should be absent
-        assert "focused" not in states
+        # 'focused' was not in the states dict, so it should be False
+        assert states["focused"] is False
 
     def test_snapshot_extracts_bounds(self, backend: LinuxBackend) -> None:
         """snapshot() must extract bounding rectangle."""
@@ -1472,6 +1493,78 @@ class TestSnapshot:
         root = self._make_accessible(role="window", name="Main")
         result = backend.snapshot(NativeHandle(root))
         assert result["role"] == "window"
+
+    # -- GW-034: Linux normalization parity tests ---
+
+    def test_snapshot_state_false_values_captured(self, backend: LinuxBackend) -> None:
+        """Disabled element must report enabled=False, not None (GW-034)."""
+        root = self._make_accessible(
+            role="push button",
+            name="Disabled",
+            states={},  # No states present → all should be False
+        )
+        result = backend.snapshot(NativeHandle(root))
+        states = result["states"]
+        assert states["enabled"] is False
+        assert states["focused"] is False
+        assert states["selected"] is False
+
+    def test_snapshot_password_role_sets_is_password(self, backend: LinuxBackend) -> None:
+        """password text role must produce is_password=True (GW-034)."""
+        root = self._make_accessible(role="password text", name="Pwd")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "text_input"
+        assert result["states"]["is_password"] is True
+
+    def test_snapshot_checked_state_tristate(self, backend: LinuxBackend) -> None:
+        """Checkbox with checked state must normalize correctly (GW-034)."""
+        root = self._make_accessible(
+            role="check box",
+            name="Agree",
+            states={"enabled": True, "checked": True},
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result["states"]["checked"] is True
+
+    def test_snapshot_editable_inverts_to_read_only(self, backend: LinuxBackend) -> None:
+        """editable=True must produce read_only=False (GW-034)."""
+        root = self._make_accessible(
+            role="entry",
+            name="Editable",
+            states={"editable": True, "enabled": True},
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result["states"]["read_only"] is False
+
+    def test_snapshot_read_only_state(self, backend: LinuxBackend) -> None:
+        """read-only state must map to read_only field (GW-034)."""
+        root = self._make_accessible(
+            role="entry",
+            name="ReadOnly",
+            states={"read-only": True, "enabled": True},
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result["states"]["read_only"] is True
+
+    def test_snapshot_showing_maps_to_visible(self, backend: LinuxBackend) -> None:
+        """showing and visible both set maps to visible=True (GW-034)."""
+        root = self._make_accessible(
+            role="push button",
+            name="Visible",
+            states={"showing": True, "visible": True, "enabled": True},
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result["states"]["visible"] is True
+
+    def test_snapshot_visible_takes_precedence_over_showing(self, backend: LinuxBackend) -> None:
+        """visible state should take precedence over showing (GW-034)."""
+        root = self._make_accessible(
+            role="push button",
+            name="Button",
+            states={"visible": True, "enabled": True},
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result["states"]["visible"] is True
 
 
 # ---------------------------------------------------------------------------

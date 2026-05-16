@@ -25,6 +25,7 @@ Usage::
     )
 """
 
+from dataclasses import fields
 from typing import Any, Literal
 
 from guidewire.models import Bounds, DesktopAction, ElementStates, NormalizedElement
@@ -38,6 +39,12 @@ __all__ = [
     "normalize_element",
     "normalize_states",
 ]
+
+# Valid ElementStates field names — used to filter resolved states so that
+# platform mappings (e.g. Linux AT-SPI ``focusable``, ``selectable``) that
+# target fields not yet present on the dataclass are silently dropped instead
+# of causing a ``TypeError`` at construction time.
+_ELEMENT_STATES_FIELDS: frozenset[str] = frozenset(f.name for f in fields(ElementStates))
 
 # -- Platform literal type ---------------------------------------------------
 
@@ -68,7 +75,13 @@ def normalize_states(
         result = resolve_state(platform, key, value)
         if result is not None:
             field_name, normalized_value = result
-            resolved[field_name] = normalized_value
+            # Only keep fields that exist on ElementStates so that
+            # platform-specific mappings for future/extended fields
+            # (e.g. Linux AT-SPI focusable, selectable) don't crash.
+            # Also skip None values so that later mappings don't
+            # overwrite an earlier explicit value with None.
+            if field_name in _ELEMENT_STATES_FIELDS and normalized_value is not None:
+                resolved[field_name] = normalized_value
 
     return ElementStates(**resolved)
 

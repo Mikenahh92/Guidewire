@@ -229,8 +229,13 @@ class TestLinuxStates:
     def test_indeterminate(self) -> None:
         field, transform = STATE_MAP[("linux", "indeterminate")]
         assert field == "checked"
-        assert transform(0) == "mixed"
+        # With the contains()-based approach, indeterminate=True means
+        # the state is present → checked="mixed".  False means absent →
+        # None (skip, don't overwrite).
+        assert transform(True) == "mixed"
         assert transform(1) == "mixed"
+        assert transform(False) is None
+        assert transform(0) is None
 
     def test_expanded(self) -> None:
         field, _ = STATE_MAP[("linux", "expanded")]

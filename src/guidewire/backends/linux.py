@@ -388,13 +388,46 @@ class LinuxBackend(DesktopBackend):
                 value = value_iface.currentValue or None
 
         # --- States ---
+        # Use contains() to capture both True and False values for each
+        # known state, matching the pattern in get_element_info.  This
+        # ensures disabled elements report enabled=False instead of
+        # enabled=None (unknown), producing platform-identical output
+        # to the Windows backend.
         raw_states: dict[str, Any] = {}
         with contextlib.suppress(Exception):
             state_set = accessible.getState()
-            state_names = state_set.get_states()
-            for s in state_names:
-                s_name = s if isinstance(s, str) else str(s)
-                raw_states[s_name] = True
+
+            import pyatspi
+
+            _state_key_to_constant = {
+                "enabled": pyatspi.STATE_ENABLED,
+                "focused": pyatspi.STATE_FOCUSED,
+                "selected": pyatspi.STATE_SELECTED,
+                "checked": pyatspi.STATE_CHECKED,
+                "expanded": pyatspi.STATE_EXPANDED,
+                "showing": pyatspi.STATE_SHOWING,
+                "visible": pyatspi.STATE_VISIBLE,
+                "offscreen": pyatspi.STATE_OFFSCREEN,
+                "read-only": pyatspi.STATE_READ_ONLY,
+                "required": pyatspi.STATE_REQUIRED,
+                "editable": pyatspi.STATE_EDITABLE,
+                "indeterminate": pyatspi.STATE_INDETERMINATE,
+            }
+
+            for state_key, state_const in _state_key_to_constant.items():
+                try:
+                    if state_set.contains(state_const):
+                        raw_states[state_key] = True
+                    else:
+                        raw_states[state_key] = False
+                except Exception:
+                    pass
+
+        # AT-SPI has no dedicated is_password state.  Detect password
+        # fields from the role name so that consumers get the same
+        # is_password=True signal the Windows backend provides.
+        if role_name == "password text":
+            raw_states["is_password"] = True
 
         # --- Bounds ---
         raw_bounds: tuple[int, int, int, int] | None = None
@@ -408,9 +441,9 @@ class LinuxBackend(DesktopBackend):
         with contextlib.suppress(Exception):
             action_iface = accessible.get_action()
             if action_iface is not None:
-                n_actions = action_iface.nActions
+                n_actions = action_iface.get_n_actions()
                 for i in range(n_actions):
-                    action_name = action_iface.getName(i)
+                    action_name = action_iface.get_action_name(i)
                     if action_name:
                         raw_actions.append(action_name)
 

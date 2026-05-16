@@ -128,6 +128,33 @@ class TestNormalizeStates:
         result = normalize_states("linux", {"showing": True})
         assert result.visible is True
 
+    def test_linux_is_password(self) -> None:
+        """is_password state maps to ElementStates.is_password (GW-034)."""
+        result = normalize_states("linux", {"is_password": True})
+        assert result.is_password is True
+
+    def test_linux_extended_states_filtered(self) -> None:
+        """States not in ElementStates (focusable, selectable, etc.) are
+        silently dropped instead of causing TypeError (GW-034)."""
+        result = normalize_states("linux", {
+            "enabled": True,
+            "focusable": True,
+            "selectable": True,
+            "multi-selectable": True,
+            "modal": True,
+            "horizontal": True,
+            "vertical": True,
+            "value": 42,
+            "min-value": 0,
+            "max-value": 100,
+            "step": 1,
+        })
+        assert result.enabled is True
+        # Extended fields should not crash and should be silently ignored.
+        # ElementStates uses slots=True so we can't check for None on
+        # non-existent fields — verify via absence from the dataclass.
+        assert not hasattr(result, "focusable")
+
     def test_element_states_is_frozen(self) -> None:
         result = normalize_states("windows", {"IsEnabled": True})
         assert hasattr(result, "__dataclass_fields__")
