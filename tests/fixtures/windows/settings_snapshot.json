@@ -1,0 +1,455 @@
+{
+  "_metadata": {
+    "captured_at": "2025-06-01T10:40:00Z",
+    "os_version": "Windows 11 23H2",
+    "app_name": "Windows Settings",
+    "guidewire_version": "0.1.0",
+    "max_depth": 4,
+    "max_nodes": 500
+  },
+  "snapshot": {
+    "control_type": 50032,
+    "name": "Settings",
+    "value": null,
+    "is_enabled": true,
+    "is_offscreen": false,
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    },
+    "patterns": [],
+    "children": [
+      {
+        "control_type": 50033,
+        "name": "Settings",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 32
+        },
+        "patterns": [],
+        "children": []
+      },
+      {
+        "control_type": 50026,
+        "name": "Find a setting",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 280,
+          "y": 40,
+          "width": 400,
+          "height": 36
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50004,
+            "name": "Find a setting",
+            "value": "",
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 280,
+              "y": 40,
+              "width": 400,
+              "height": 36
+            },
+            "patterns": ["Value", "Text"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50008,
+        "name": "Navigation",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 0,
+          "y": 80,
+          "width": 260,
+          "height": 640
+        },
+        "patterns": ["Selection"],
+        "children": [
+          {
+            "control_type": 50007,
+            "name": "System",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 80,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Bluetooth & devices",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 128,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Network & internet",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 176,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Personalization",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 224,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Apps",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 272,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Accounts",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 320,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Time & language",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 368,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Gaming",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 416,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Privacy & security",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 464,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Windows Update",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 512,
+              "width": 260,
+              "height": 48
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50025,
+        "name": "Personalization",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 280,
+          "y": 80,
+          "width": 1000,
+          "height": 640
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50020,
+            "name": "Personalization",
+            "value": "Personalization",
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 96,
+              "width": 200,
+              "height": 36
+            },
+            "patterns": [],
+            "children": []
+          },
+          {
+            "control_type": 50026,
+            "name": "Background",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 148,
+              "width": 960,
+              "height": 80
+            },
+            "patterns": [],
+            "children": [
+              {
+                "control_type": 50000,
+                "name": "Background",
+                "value": null,
+                "is_enabled": true,
+                "is_offscreen": false,
+                "bounds": {
+                  "x": 300,
+                  "y": 148,
+                  "width": 960,
+                  "height": 80
+                },
+                "patterns": ["Invoke"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "control_type": 50026,
+            "name": "Colors",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 240,
+              "width": 960,
+              "height": 80
+            },
+            "patterns": [],
+            "children": [
+              {
+                "control_type": 50000,
+                "name": "Colors",
+                "value": null,
+                "is_enabled": true,
+                "is_offscreen": false,
+                "bounds": {
+                  "x": 300,
+                  "y": 240,
+                  "width": 960,
+                  "height": 80
+                },
+                "patterns": ["Invoke"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "control_type": 50026,
+            "name": "Themes",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 332,
+              "width": 960,
+              "height": 80
+            },
+            "patterns": [],
+            "children": [
+              {
+                "control_type": 50000,
+                "name": "Themes",
+                "value": null,
+                "is_enabled": true,
+                "is_offscreen": false,
+                "bounds": {
+                  "x": 300,
+                  "y": 332,
+                  "width": 960,
+                  "height": 80
+                },
+                "patterns": ["Invoke"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "control_type": 50026,
+            "name": "Lock screen",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 424,
+              "width": 960,
+              "height": 80
+            },
+            "patterns": [],
+            "children": [
+              {
+                "control_type": 50000,
+                "name": "Lock screen",
+                "value": null,
+                "is_enabled": true,
+                "is_offscreen": false,
+                "bounds": {
+                  "x": 300,
+                  "y": 424,
+                  "width": 960,
+                  "height": 80
+                },
+                "patterns": ["Invoke"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "control_type": 50026,
+            "name": "Start",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 516,
+              "width": 960,
+              "height": 80
+            },
+            "patterns": [],
+            "children": [
+              {
+                "control_type": 50000,
+                "name": "Start",
+                "value": null,
+                "is_enabled": true,
+                "is_offscreen": false,
+                "bounds": {
+                  "x": 300,
+                  "y": 516,
+                  "width": 960,
+                  "height": 80
+                },
+                "patterns": ["Invoke"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "control_type": 50026,
+            "name": "Taskbar",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 300,
+              "y": 608,
+              "width": 960,
+              "height": 80
+            },
+            "patterns": [],
+            "children": [
+              {
+                "control_type": 50000,
+                "name": "Taskbar",
+                "value": null,
+                "is_enabled": true,
+                "is_offscreen": false,
+                "bounds": {
+                  "x": 300,
+                  "y": 608,
+                  "width": 960,
+                  "height": 80
+                },
+                "patterns": ["Invoke"],
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

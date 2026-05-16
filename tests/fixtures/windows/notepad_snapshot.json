@@ -1,0 +1,178 @@
+{
+  "_metadata": {
+    "captured_at": "2025-06-01T10:30:00Z",
+    "os_version": "Windows 11 23H2",
+    "app_name": "Notepad",
+    "guidewire_version": "0.1.0",
+    "max_depth": 4,
+    "max_nodes": 500
+  },
+  "snapshot": {
+    "control_type": 50032,
+    "name": "Untitled - Notepad",
+    "value": null,
+    "is_enabled": true,
+    "is_offscreen": false,
+    "bounds": {
+      "x": 100,
+      "y": 100,
+      "width": 800,
+      "height": 600
+    },
+    "patterns": [],
+    "children": [
+      {
+        "control_type": 50033,
+        "name": "Untitled - Notepad",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 100,
+          "y": 100,
+          "width": 800,
+          "height": 32
+        },
+        "patterns": [],
+        "children": []
+      },
+      {
+        "control_type": 50010,
+        "name": "Application",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 100,
+          "y": 132,
+          "width": 800,
+          "height": 24
+        },
+        "patterns": ["Invoke"],
+        "children": [
+          {
+            "control_type": 50011,
+            "name": "File",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 100,
+              "y": 132,
+              "width": 40,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50011,
+            "name": "Edit",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 140,
+              "y": 132,
+              "width": 40,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50011,
+            "name": "Format",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 180,
+              "y": 132,
+              "width": 56,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50011,
+            "name": "View",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 236,
+              "y": 132,
+              "width": 44,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50011,
+            "name": "Help",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 280,
+              "y": 132,
+              "width": 44,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50038,
+        "name": "Text Editor",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 100,
+          "y": 156,
+          "width": 800,
+          "height": 544
+        },
+        "patterns": ["Value", "Text"],
+        "children": [
+          {
+            "control_type": 50004,
+            "name": "",
+            "value": "",
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 100,
+              "y": 156,
+              "width": 800,
+              "height": 544
+            },
+            "patterns": ["Value", "Text"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50034,
+        "name": "",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 100,
+          "y": 680,
+          "width": 800,
+          "height": 20
+        },
+        "patterns": [],
+        "children": []
+      }
+    ]
+  }
+}

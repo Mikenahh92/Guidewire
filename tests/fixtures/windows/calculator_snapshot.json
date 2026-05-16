@@ -1,0 +1,495 @@
+{
+  "_metadata": {
+    "captured_at": "2025-06-01T10:35:00Z",
+    "os_version": "Windows 11 23H2",
+    "app_name": "Calculator",
+    "guidewire_version": "0.1.0",
+    "max_depth": 4,
+    "max_nodes": 500
+  },
+  "snapshot": {
+    "control_type": 50032,
+    "name": "Calculator",
+    "value": null,
+    "is_enabled": true,
+    "is_offscreen": false,
+    "bounds": {
+      "x": 200,
+      "y": 200,
+      "width": 320,
+      "height": 500
+    },
+    "patterns": [],
+    "children": [
+      {
+        "control_type": 50033,
+        "name": "Calculator",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 200,
+          "y": 200,
+          "width": 320,
+          "height": 32
+        },
+        "patterns": [],
+        "children": []
+      },
+      {
+        "control_type": 50010,
+        "name": "Application",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 200,
+          "y": 232,
+          "width": 320,
+          "height": 24
+        },
+        "patterns": ["Invoke"],
+        "children": [
+          {
+            "control_type": 50011,
+            "name": "View",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 200,
+              "y": 232,
+              "width": 44,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50011,
+            "name": "Edit",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 244,
+              "y": 232,
+              "width": 40,
+              "height": 24
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50026,
+        "name": "Display",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 212,
+          "y": 264,
+          "width": 296,
+          "height": 80
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50020,
+            "name": "Type",
+            "value": "Standard",
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 220,
+              "y": 272,
+              "width": 60,
+              "height": 20
+            },
+            "patterns": [],
+            "children": []
+          },
+          {
+            "control_type": 50004,
+            "name": "Display is 0",
+            "value": "0",
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 220,
+              "y": 300,
+              "width": 280,
+              "height": 36
+            },
+            "patterns": ["Value"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50026,
+        "name": "Memory",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 212,
+          "y": 352,
+          "width": 296,
+          "height": 28
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50000,
+            "name": "Memory",
+            "value": null,
+            "is_enabled": false,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 212,
+              "y": 352,
+              "width": 28,
+              "height": 28
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50026,
+        "name": "Standard Operators",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 212,
+          "y": 388,
+          "width": 296,
+          "height": 300
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50000,
+            "name": "Percent",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 212,
+              "y": 388,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Clear Entry",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 276,
+              "y": 388,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Clear",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 340,
+              "y": 388,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Backspace",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 404,
+              "y": 388,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Divide by",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 468,
+              "y": 388,
+              "width": 40,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Seven",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 212,
+              "y": 440,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Eight",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 276,
+              "y": 440,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Nine",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 340,
+              "y": 440,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Multiply by",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 468,
+              "y": 440,
+              "width": 40,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Four",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 212,
+              "y": 492,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Five",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 276,
+              "y": 492,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Six",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 340,
+              "y": 492,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Minus",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 468,
+              "y": 492,
+              "width": 40,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "One",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 212,
+              "y": 544,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Two",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 276,
+              "y": 544,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Three",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 340,
+              "y": 544,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Plus",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 468,
+              "y": 544,
+              "width": 40,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Negate",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 212,
+              "y": 596,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Zero",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 276,
+              "y": 596,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Decimal",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 340,
+              "y": 596,
+              "width": 60,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Equals",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 468,
+              "y": 596,
+              "width": 40,
+              "height": 48
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}
