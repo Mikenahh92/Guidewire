@@ -14,6 +14,7 @@ Public API re-exports:
 """
 
 from guidewire.backends.base import DesktopBackend
+from guidewire.backends.linux import LinuxBackend
 from guidewire.backends.mock import MockBackend
 from guidewire.backends.types import (
     DesktopAction,
@@ -27,6 +28,7 @@ __all__ = [
     "DesktopBackend",
     "ElementBounds",
     "ElementState",
+    "LinuxBackend",
     "MockBackend",
     "NativeHandle",
 ]
