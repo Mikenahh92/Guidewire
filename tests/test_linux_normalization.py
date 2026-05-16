@@ -21,18 +21,16 @@ Validates:
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from guidewire.backends.normalize import normalize_element, normalize_states
 from guidewire.models.mappings import (
-    ACTION_MAP,
-    ROLE_MAP,
-    STATE_MAP,
     _LINUX_ACTIONS,
     _LINUX_ROLES,
     _LINUX_STATES,
+    ACTION_MAP,
+    ROLE_MAP,
+    STATE_MAP,
     resolve_action,
     resolve_role,
     resolve_state,
@@ -1420,6 +1418,7 @@ class TestLinuxMappingCompleteness:
         """All ``_LINUX_STATES`` field names are either valid
         ``ElementStates`` fields or intentionally filtered out."""
         from dataclasses import fields
+
         from guidewire.models import ElementStates
 
         valid_fields = {f.name for f in fields(ElementStates)}
