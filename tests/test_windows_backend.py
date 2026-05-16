@@ -23,7 +23,7 @@ import pytest
 from guidewire.backends.base import DesktopBackend
 from guidewire.backends.types import NativeHandle
 from guidewire.backends.windows import WindowsBackend
-from guidewire.errors import BackendUnavailableError
+from guidewire.errors import BackendUnavailableError, StaleElementReferenceError
 
 # ---------------------------------------------------------------------------
 # Structural tests (run on any platform)
@@ -258,16 +258,20 @@ class TestStubMethods:
         except NotImplementedError:
             pytest.fail("find_elements() should no longer raise NotImplementedError")
 
-    def test_perform_action_raises_not_implemented(self, backend: WindowsBackend) -> None:
+    def test_perform_action_disposed_raises(self, backend: WindowsBackend) -> None:
+        """perform_action on a disposed backend raises StaleElementReferenceError."""
         from guidewire.backends.types import DesktopAction, NativeHandle
 
-        with pytest.raises(NotImplementedError, match="perform_action"):
+        backend.dispose()
+        with pytest.raises(StaleElementReferenceError, match="disposed"):
             backend.perform_action(NativeHandle("fake"), DesktopAction.CLICK)
 
-    def test_get_element_info_raises_not_implemented(self, backend: WindowsBackend) -> None:
+    def test_get_element_info_disposed_raises(self, backend: WindowsBackend) -> None:
+        """get_element_info on a disposed backend raises StaleElementReferenceError."""
         from guidewire.backends.types import NativeHandle
 
-        with pytest.raises(NotImplementedError, match="get_element_info"):
+        backend.dispose()
+        with pytest.raises(StaleElementReferenceError, match="disposed"):
             backend.get_element_info(NativeHandle("fake"))
 
     def test_is_valid_no_longer_raises_not_implemented(
@@ -280,6 +284,10 @@ class TestStubMethods:
         mock_element = MagicMock()
         backend.is_valid(NativeHandle(mock_element))  # type: ignore[arg-type]
         # No assertion needed — just verifying it doesn't raise NotImplementedError
+
+    def test_is_valid_returns_false_for_none(self, backend: WindowsBackend) -> None:
+        """is_valid must return False for None handle."""
+        assert backend.is_valid(None) is False
 
     def test_dispose_sets_disposed_flag(self, backend: WindowsBackend) -> None:
         """dispose() must set _disposed to True without raising."""

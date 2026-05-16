@@ -9,8 +9,7 @@ Implementation status:
 - ``list_windows`` — implemented (GW-020)
 - ``focus_window`` — implemented (GW-021)
 - ``snapshot``, ``find_elements`` — implemented (GW-022)
-- ``perform_action``, ``get_element_info`` — pending (GW-023)
-- ``is_valid`` — implemented (GW-024)
+- ``perform_action``, ``get_element_info``, ``is_valid`` — implemented (GW-023)
 
 Implements :meth:`snapshot` and :meth:`find_elements` via
 ``IUIAutomationTreeWalker`` for depth-limited accessibility tree traversal,
@@ -25,7 +24,13 @@ from typing import Any
 
 from guidewire.backends.base import DesktopBackend
 from guidewire.backends.types import DesktopAction, NativeHandle
-from guidewire.errors import BackendUnavailableError, WindowNotFoundError
+from guidewire.errors import (
+    ActionNotSupportedError,
+    BackendUnavailableError,
+    ElementNotFoundError,
+    StaleElementReferenceError,
+    WindowNotFoundError,
+)
 from guidewire.models.mappings import resolve_action, resolve_role, resolve_state
 
 logger = logging.getLogger(__name__)
@@ -66,6 +71,72 @@ class _ComHandle:
             return True
         except Exception:
             return False
+
+# UIA property IDs used by get_element_info
+_UIA_NAME_PROPERTY_ID = 30005  # UIA_PropertyId_UIA_NamePropertyId
+_UIA_CONTROL_TYPE_PROPERTY_ID_ROLE = 30003  # Same as above, for role lookup
+_UIA_IS_ENABLED_PROPERTY_ID = 30010  # UIA_PropertyId_UIA_IsEnabledPropertyId
+_UIA_HAS_KEYBOARD_FOCUS_PROPERTY_ID = 30008  # UIA_PropertyId_UIA_HasKeyboardFocusPropertyId
+_UIA_IS_SELECTED_PROPERTY_ID = 30011  # UIA_PropertyId_UIA_IsSelectedPropertyId
+_UIA_TOGGLE_STATE_PROPERTY_ID = 30086  # UIA_PropertyId_UIA_ToggleToggleStatePropertyId
+_UIA_IS_EXPANDED_PROPERTY_ID = 30015  # UIA_PropertyId_UIA_ExpansionExpandCollapseStatePropertyId
+_UIA_IS_READ_ONLY_PROPERTY_ID = 30016  # UIA_PropertyId_UIA_ValueIsReadOnlyPropertyId
+_UIA_IS_REQUIRED_FOR_FORM_PROPERTY_ID = 30025  # UIA_PropertyId_UIA_IsRequiredForFormPropertyId
+_UIA_IS_PASSWORD_PROPERTY_ID = 30019  # UIA_PropertyId_UIA_IsPasswordPropertyId
+
+# UIA pattern IDs used by perform_action
+_UIA_INVOKE_PATTERN_ID = 10000  # UIA_InvokePatternId
+_UIA_VALUE_PATTERN_ID = 10002  # UIA_ValuePatternId
+_UIA_TOGGLE_PATTERN_ID = 10015  # UIA_TogglePatternId
+_UIA_SELECTION_ITEM_PATTERN_ID = 10010  # UIA_SelectionItemPatternId
+_UIA_TEXT_PATTERN_ID = 10014  # UIA_TextPatternId
+_UIA_SCROLL_PATTERN_ID = 10011  # UIA_ScrollPatternId
+_UIA_RANGE_VALUE_PATTERN_ID = 10003  # UIA_RangeValuePatternId
+_UIA_EXPAND_COLLAPSE_PATTERN_ID = 10005  # UIA_ExpandCollapsePatternId
+_UIA_LEGACY_IAccessIBLE_PATTERN_ID = 10018  # UIA_LegacyIAccessiblePatternId
+
+# UIA ControlType IDs for role mapping
+_UIA_CONTROL_TYPE_NAMES: dict[int, str] = {
+    50000: "Button",
+    50001: "Calendar",
+    50002: "CheckBox",
+    50003: "ComboBox",
+    50004: "Edit",
+    50005: "Hyperlink",
+    50006: "Image",
+    50007: "ListItem",
+    50008: "List",
+    50009: "MenuBar",
+    50010: "MenuItem",
+    50011: "ProgressBar",
+    50012: "RadioButton",
+    50013: "ScrollBar",
+    50014: "Slider",
+    50015: "Spinner",
+    50016: "StatusBar",
+    50017: "Tab",
+    50018: "TabItem",
+    50019: "Text",
+    50020: "ToolBar",
+    50021: "ToolTip",
+    50022: "Tree",
+    50023: "TreeItem",
+    50024: "Custom",
+    50025: "Group",
+    50026: "Thumb",
+    50027: "DataGrid",
+    50028: "DataItem",
+    50029: "Document",
+    50030: "SplitButton",
+    50031: "Window",
+    50032: "Window",
+    50033: "Pane",
+    50034: "Header",
+    50035: "HeaderItem",
+    50036: "Table",
+    50037: "TitleBar",
+    50038: "Separator",
+}
 
 
 class WindowsBackend(DesktopBackend):
@@ -238,9 +309,7 @@ class WindowsBackend(DesktopBackend):
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
 
         if not user32.IsWindow(hwnd):  # type: ignore[attr-defined]
-            raise WindowNotFoundError(
-                f"Window handle {hwnd:#x} is not a valid window"
-            )
+            raise WindowNotFoundError(f"Window handle {hwnd:#x} is not a valid window")
 
         # First attempt: SetForegroundWindow
         result = user32.SetForegroundWindow(hwnd)  # type: ignore[attr-defined]
@@ -253,14 +322,15 @@ class WindowsBackend(DesktopBackend):
             keyeventf_keyup = 0x0002
             user32.keybd_event(vk_menu, 0, 0, 0)  # type: ignore[attr-defined]
             user32.keybd_event(  # type: ignore[attr-defined]
-                vk_menu, 0, keyeventf_keyup, 0,
+                vk_menu,
+                0,
+                keyeventf_keyup,
+                0,
             )
             result = user32.SetForegroundWindow(hwnd)  # type: ignore[attr-defined]
 
         if not result:
-            raise WindowNotFoundError(
-                f"SetForegroundWindow failed for window handle {hwnd:#x}"
-            )
+            raise WindowNotFoundError(f"SetForegroundWindow failed for window handle {hwnd:#x}")
 
         # Set UIA keyboard focus (architecture §2.5)
         try:
@@ -597,42 +667,610 @@ class WindowsBackend(DesktopBackend):
         action: DesktopAction,
         **kwargs: Any,
     ) -> Any:
-        """Perform an action on an element.
+        """Perform an action on an element via UIA COM patterns.
 
-        .. todo:: Map :class:`DesktopAction` to UIA invoke/set-value
-           patterns (``IUIAutomationInvokePattern``, etc.).
+        Maps each :class:`DesktopAction` variant to the appropriate UIA
+        pattern interface:
+
+        - ``CLICK`` → ``IUIAutomationInvokePattern.Invoke()``
+        - ``TYPE`` → ``IUIAutomationTextPattern`` / keyboard simulation
+        - ``PRESS_KEY`` → ``IUIAutomationLegacyIAccessiblePattern.DoDefaultAction``
+          or ``SendInput`` keyboard simulation
+        - ``SET_VALUE`` → ``IUIAutomationValuePattern.SetValue()``
+        - ``SELECT`` → ``IUIAutomationSelectionItemPattern.Select()``
+        - ``SCROLL`` → ``IUIAutomationScrollPattern.Scroll()``
+        - ``GET_TEXT`` → ``IUIAutomationValuePattern.CurrentValue``
+        - ``TOGGLE`` → ``IUIAutomationTogglePattern.Toggle()``
+        - ``EXPAND`` → ``IUIAutomationExpandCollapsePattern.Expand()``
+        - ``COLLAPSE`` → ``IUIAutomationExpandCollapsePattern.Collapse()``
+        - ``INCREMENT`` → ``IUIAutomationRangeValuePattern.SetValue(current + SmallChange)``
+        - ``DECREMENT`` → ``IUIAutomationRangeValuePattern.SetValue(current - SmallChange)``
 
         Args:
-            handle: Opaque native element handle.
+            handle: Opaque native element handle (COM ``IUIAutomationElement``).
             action: The action to perform.
-            **kwargs: Action-specific parameters.
+            **kwargs: Action-specific parameters:
+                - ``text`` (str): text to type (for ``TYPE``)
+                - ``value`` (str): value to set (for ``SET_VALUE``)
+                - ``key`` (str): key to press (for ``PRESS_KEY``)
+                - ``scroll_amount`` (int): scroll amount (for ``SCROLL``)
+                - ``horizontal`` (bool): scroll direction (for ``SCROLL``)
 
         Returns:
             ``str`` when action is ``GET_TEXT``, otherwise ``None``.
 
         Raises:
-            ElementNotFoundError: If the handle is not known.
-            StaleElementReferenceError: If the element no longer exists.
-            ActionNotSupportedError: If the action is not available.
+            StaleElementReferenceError: If the backend is disposed.
+            ActionNotSupportedError: If the element does not support the
+                required pattern.
+            ElementNotFoundError: If the handle is invalid.
         """
-        raise NotImplementedError("perform_action not yet implemented — see GW-023")
+        if self._disposed:
+            raise StaleElementReferenceError("WindowsBackend has been disposed")
 
-    def get_element_info(self, handle: NativeHandle) -> dict[str, Any]:
-        """Return element metadata as a dict.
+        element = self._unwrap_element(handle)
 
-        .. todo:: Read role, name, and states from ``IUIAutomationElement``
-           properties (CurrentControlType, CurrentName, CurrentIsEnabled, etc.).
+        try:
+            if action == DesktopAction.CLICK:
+                return self._action_click(element)
+            if action == DesktopAction.TYPE:
+                return self._action_type(element, **kwargs)
+            if action == DesktopAction.PRESS_KEY:
+                return self._action_press_key(element, **kwargs)
+            if action == DesktopAction.SET_VALUE:
+                return self._action_set_value(element, **kwargs)
+            if action == DesktopAction.SELECT:
+                return self._action_select(element)
+            if action == DesktopAction.SCROLL:
+                return self._action_scroll(element, **kwargs)
+            if action == DesktopAction.GET_TEXT:
+                return self._action_get_text(element)
+            if action == DesktopAction.TOGGLE:
+                return self._action_toggle(element)
+            if action == DesktopAction.EXPAND:
+                return self._action_expand(element)
+            if action == DesktopAction.COLLAPSE:
+                return self._action_collapse(element)
+            if action == DesktopAction.INCREMENT:
+                return self._action_increment(element)
+            if action == DesktopAction.DECREMENT:
+                return self._action_decrement(element)
+        except ActionNotSupportedError:
+            raise
+        except StaleElementReferenceError:
+            raise
+        except BackendUnavailableError:
+            raise
+        except Exception as exc:
+            if hasattr(exc, "hresult"):
+                raise self._translate_com_error(exc) from exc
+            raise ActionNotSupportedError(f"Failed to perform {action!r}: {exc}") from exc
+
+    # -- Action dispatch helpers -----------------------------------------------
+
+    @staticmethod
+    def _translate_com_error(
+        exc: Exception,
+    ) -> StaleElementReferenceError | ActionNotSupportedError:
+        """Translate a COM exception based on its HRESULT code.
+
+        Per architecture §5:
+        - 0x80040201 (UIA_E_ELEMENTNOTAVAILABLE) → StaleElementReferenceError
+        - 0x80070005 (E_ACCESSDENIED) → StaleElementReferenceError
+        - 0x80070057 (E_INVALIDARG) → ActionNotSupportedError
+        - other HRESULTs → StaleElementReferenceError
+
+        Args:
+            exc: The COM exception to translate.
+
+        Returns:
+            The appropriate Guidewire exception.
+        """
+        hresult = getattr(exc, "hresult", None)
+        if hresult is not None and hresult & 0x80070000 == 0x80070000 and hresult == 0x80070057:
+            return ActionNotSupportedError(
+                f"Invalid argument for COM call (HRESULT 0x{hresult:08X}): {exc}"
+            )
+        return StaleElementReferenceError(f"Element is no longer available (COM error): {exc}")
+
+    @staticmethod
+    def _unwrap_element(handle: NativeHandle) -> Any:
+        """Extract the underlying COM element from a NativeHandle.
 
         Args:
             handle: Opaque native element handle.
 
         Returns:
+            The COM ``IUIAutomationElement`` object.
+
+        Raises:
+            ElementNotFoundError: If the handle is ``None`` or empty.
+        """
+        element = handle
+        if element is None:
+            raise ElementNotFoundError("Element handle is None")
+        return element
+
+    def _get_pattern(self, element: Any, pattern_id: int) -> Any:
+        """Retrieve a UIA pattern from an element.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+            pattern_id: UIA pattern identifier (e.g. ``_UIA_INVOKE_PATTERN_ID``).
+
+        Returns:
+            The pattern COM interface object.
+
+        Raises:
+            ActionNotSupportedError: If the pattern is not available.
+        """
+        try:
+            pattern = self._uia.GetPattern(element, pattern_id)
+            if pattern is None:
+                pattern_name = {
+                    _UIA_INVOKE_PATTERN_ID: "Invoke",
+                    _UIA_VALUE_PATTERN_ID: "Value",
+                    _UIA_TOGGLE_PATTERN_ID: "Toggle",
+                    _UIA_SELECTION_ITEM_PATTERN_ID: "SelectionItem",
+                    _UIA_TEXT_PATTERN_ID: "Text",
+                    _UIA_SCROLL_PATTERN_ID: "Scroll",
+                    _UIA_RANGE_VALUE_PATTERN_ID: "RangeValue",
+                    _UIA_EXPAND_COLLAPSE_PATTERN_ID: "ExpandCollapse",
+                    _UIA_LEGACY_IAccessIBLE_PATTERN_ID: "LegacyIAccessible",
+                }.get(pattern_id, str(pattern_id))
+                raise ActionNotSupportedError(
+                    f"Element does not support the {pattern_name} pattern"
+                )
+            return pattern
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            if hasattr(exc, "hresult"):
+                raise self._translate_com_error(exc) from exc
+            raise ActionNotSupportedError(f"Failed to get pattern {pattern_id}: {exc}") from exc
+
+    def _action_click(self, element: Any) -> None:
+        """Click an element via InvokePattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If InvokePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_INVOKE_PATTERN_ID)
+        try:
+            pattern.Invoke()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Invoke failed: {exc}") from exc
+
+    def _action_type(self, element: Any, **kwargs: Any) -> None:
+        """Type text into an element.
+
+        Uses ``IUIAutomationValuePattern`` if the element supports it.
+        Per architecture §2.1 and test-design TC-PA-002, reads the current
+        value, concatenates the new text, then calls ``SetValue`` with the
+        result (append semantics).  Falls back to setting focus and sending
+        keystrokes via ``SendInput`` when ValuePattern is unavailable.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+            **kwargs: Must contain ``text`` (str).
+
+        Raises:
+            ActionNotSupportedError: If text cannot be typed.
+        """
+        text = kwargs.get("text")
+        if text is None:
+            raise ActionNotSupportedError("TYPE action requires a 'text' parameter")
+
+        # Try ValuePattern first (append semantics: read + concat + set)
+        try:
+            pattern = self._get_pattern(element, _UIA_VALUE_PATTERN_ID)
+            current = str(pattern.CurrentValue)
+            pattern.SetValue(current + str(text))
+            return
+        except ActionNotSupportedError:
+            pass
+
+        # Fallback: set focus and simulate keyboard input
+        try:
+            element.SetFocus()
+            self._send_text(str(text))
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Failed to type text: {exc}") from exc
+
+    def _action_press_key(self, element: Any, **kwargs: Any) -> None:
+        """Press a key while an element has focus.
+
+        Sets focus on the element, then simulates the key press via
+        ``SendInput``.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+            **kwargs: Must contain ``key`` (str).
+
+        Raises:
+            ActionNotSupportedError: If the key press cannot be performed.
+        """
+        key = kwargs.get("key")
+        if key is None:
+            raise ActionNotSupportedError("PRESS_KEY action requires a 'key' parameter")
+
+        try:
+            element.SetFocus()
+            self._send_key(str(key))
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Failed to press key: {exc}") from exc
+
+    def _action_set_value(self, element: Any, **kwargs: Any) -> None:
+        """Set the value of an element via ValuePattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+            **kwargs: Must contain ``value`` (str).
+
+        Raises:
+            ActionNotSupportedError: If ValuePattern is not available.
+        """
+        value = kwargs.get("value")
+        if value is None:
+            raise ActionNotSupportedError("SET_VALUE action requires a 'value' parameter")
+
+        pattern = self._get_pattern(element, _UIA_VALUE_PATTERN_ID)
+        try:
+            pattern.SetValue(str(value))
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"SetValue failed: {exc}") from exc
+
+    def _action_select(self, element: Any) -> None:
+        """Select an element via SelectionItemPattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If SelectionItemPattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_SELECTION_ITEM_PATTERN_ID)
+        try:
+            pattern.Select()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Select failed: {exc}") from exc
+
+    def _action_scroll(self, element: Any, **kwargs: Any) -> None:
+        """Scroll an element via ScrollPattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+            **kwargs: Optional ``scroll_amount`` (int) and ``horizontal`` (bool).
+
+        Raises:
+            ActionNotSupportedError: If ScrollPattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_SCROLL_PATTERN_ID)
+        try:
+            horizontal = bool(kwargs.get("horizontal", False))
+            amount = int(kwargs.get("scroll_amount", 1))
+            # UIA ScrollAmount: 0=LargeDecrement, 1=SmallDecrement,
+            # 2=NoAmount, 3=SmallIncrement, 4=LargeIncrement
+            scroll_amount = 3 if amount >= 0 else 1
+            if horizontal:
+                pattern.ScrollHorizontal(scroll_amount)
+            else:
+                pattern.ScrollVertical(scroll_amount)
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Scroll failed: {exc}") from exc
+
+    def _action_get_text(self, element: Any) -> str:
+        """Get the text value of an element via ValuePattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Returns:
+            The current value string.
+
+        Raises:
+            ActionNotSupportedError: If ValuePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_VALUE_PATTERN_ID)
+        try:
+            return str(pattern.CurrentValue)
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"GetText failed: {exc}") from exc
+
+    def _action_toggle(self, element: Any) -> None:
+        """Toggle an element via TogglePattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If TogglePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_TOGGLE_PATTERN_ID)
+        try:
+            pattern.Toggle()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Toggle failed: {exc}") from exc
+
+    def _action_expand(self, element: Any) -> None:
+        """Expand an element via ExpandCollapsePattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If ExpandCollapsePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_EXPAND_COLLAPSE_PATTERN_ID)
+        try:
+            pattern.Expand()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Expand failed: {exc}") from exc
+
+    def _action_collapse(self, element: Any) -> None:
+        """Collapse an element via ExpandCollapsePattern.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If ExpandCollapsePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_EXPAND_COLLAPSE_PATTERN_ID)
+        try:
+            pattern.Collapse()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Collapse failed: {exc}") from exc
+
+    def _action_increment(self, element: Any) -> None:
+        """Increment a range value element via RangeValuePattern.
+
+        Reads the current value and adds the small-change delta.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If RangeValuePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_RANGE_VALUE_PATTERN_ID)
+        try:
+            current = pattern.CurrentValue
+            small_change = pattern.SmallChange
+            if small_change <= 0:
+                small_change = 1.0
+            new_value = current + small_change
+            maximum = pattern.Maximum
+            if new_value > maximum:
+                new_value = maximum
+            pattern.SetValue(new_value)
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Increment failed: {exc}") from exc
+
+    def _action_decrement(self, element: Any) -> None:
+        """Decrement a range value element via RangeValuePattern.
+
+        Reads the current value and subtracts the small-change delta.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If RangeValuePattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_RANGE_VALUE_PATTERN_ID)
+        try:
+            current = pattern.CurrentValue
+            small_change = pattern.SmallChange
+            if small_change <= 0:
+                small_change = 1.0
+            new_value = current - small_change
+            minimum = pattern.Minimum
+            if new_value < minimum:
+                new_value = minimum
+            pattern.SetValue(new_value)
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"Decrement failed: {exc}") from exc
+
+    @staticmethod
+    def _send_text(text: str) -> None:
+        """Simulate typing text via ``SendInput`` Win32 API.
+
+        Args:
+            text: The text string to type.
+        """
+        import ctypes
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+
+        for char in text:
+            vk = ctypes.windll.user32.VkKeyScanW(ord(char)) & 0xFF  # type: ignore[attr-defined]
+            if vk == 0xFF:
+                continue
+            user32.SendInput(  # type: ignore[attr-defined]
+                1,
+                ctypes.byref(
+                    ctypes.windll.user32.INPUT(  # type: ignore[attr-defined]
+                        type=1,  # INPUT_KEYBOARD
+                        ki=ctypes.windll.user32.KEYBDINPUT(  # type: ignore[attr-defined]
+                            wVk=vk,
+                        ),
+                    )
+                ),
+                ctypes.sizeof(ctypes.windll.user32.INPUT),  # type: ignore[attr-defined]
+            )
+
+    @staticmethod
+    def _send_key(key: str) -> None:
+        """Simulate a single key press via ``SendInput`` Win32 API.
+
+        Maps common key names to virtual-key codes.
+
+        Args:
+            key: The key name (e.g. ``"Enter"``, ``"Tab"``, ``"Escape"``).
+        """
+        import ctypes
+
+        _key_map: dict[str, int] = {
+            "enter": 0x0D,
+            "tab": 0x09,
+            "escape": 0x1B,
+            "backspace": 0x08,
+            "delete": 0x2E,
+            "arrowup": 0x26,
+            "arrowdown": 0x28,
+            "arrowleft": 0x25,
+            "arrowright": 0x27,
+            "home": 0x24,
+            "end": 0x23,
+            "pageup": 0x21,
+            "pagedown": 0x22,
+            "f1": 0x70,
+            "f2": 0x71,
+            "f3": 0x72,
+            "f4": 0x73,
+            "f5": 0x74,
+            "f6": 0x75,
+            "f7": 0x76,
+            "f8": 0x77,
+            "f9": 0x78,
+            "f10": 0x79,
+            "f11": 0x7A,
+            "f12": 0x7B,
+            "space": 0x20,
+        }
+
+        vk = _key_map.get(key.lower())
+        if vk is None:
+            vk = (
+                ctypes.windll.user32.VkKeyScanW(ord(key)) & 0xFF  # type: ignore[attr-defined]
+                if len(key) == 1
+                else 0
+            )
+
+        if vk == 0:
+            return
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        user32.SendInput(  # type: ignore[attr-defined]
+            1,
+            ctypes.byref(
+                user32.INPUT(  # type: ignore[attr-defined]
+                    type=1,
+                    ki=user32.KEYBDINPUT(wVk=vk),
+                )
+            ),
+            ctypes.sizeof(user32.INPUT),  # type: ignore[attr-defined]
+        )
+
+    def get_element_info(self, handle: NativeHandle) -> dict[str, Any]:
+        """Return element metadata as a dict.
+
+        Reads the following UIA properties from the COM element:
+        - ``CurrentControlType`` → normalized role via ``resolve_role``
+        - ``CurrentName`` → ``name``
+        - ``IsEnabled``, ``HasKeyboardFocus``, ``IsSelected``,
+          ``ToggleState``, ``IsExpanded``, ``IsReadOnly``,
+          ``IsRequiredForForm``, ``IsPassword``, ``IsOffscreen``,
+          ``Visibility`` → ``states`` dict
+
+        Args:
+            handle: Opaque native element handle (COM ``IUIAutomationElement``).
+
+        Returns:
             Dict with keys ``role``, ``name``, ``states``.
 
         Raises:
-            ElementNotFoundError: If the handle is not known.
+            ElementNotFoundError: If the handle is ``None`` or invalid.
+            StaleElementReferenceError: If the backend is disposed.
         """
-        raise NotImplementedError("get_element_info not yet implemented — see GW-023")
+        from guidewire.models.mappings import resolve_role
+
+        if self._disposed:
+            raise StaleElementReferenceError("WindowsBackend has been disposed")
+
+        element = self._unwrap_element(handle)
+
+        try:
+            # Read role from ControlType
+            control_type_id = element.GetCurrentPropertyValue(_UIA_CONTROL_TYPE_PROPERTY_ID)
+            control_type_name = _UIA_CONTROL_TYPE_NAMES.get(int(control_type_id), "Custom")
+            role = resolve_role("windows", control_type_name) or "custom"
+
+            # Read name
+            name = element.GetCurrentPropertyValue(_UIA_NAME_PROPERTY_ID)
+
+            # Read states
+            states: dict[str, Any] = {}
+            states["enabled"] = bool(element.GetCurrentPropertyValue(_UIA_IS_ENABLED_PROPERTY_ID))
+            states["focused"] = bool(
+                element.GetCurrentPropertyValue(_UIA_HAS_KEYBOARD_FOCUS_PROPERTY_ID)
+            )
+            states["selected"] = bool(element.GetCurrentPropertyValue(_UIA_IS_SELECTED_PROPERTY_ID))
+
+            # ToggleState: 0=Off, 1=On, 2=Indeterminate
+            toggle_state = element.GetCurrentPropertyValue(_UIA_TOGGLE_STATE_PROPERTY_ID)
+            if toggle_state == 1:
+                states["checked"] = True
+            elif toggle_state == 2:
+                states["checked"] = "mixed"
+            else:
+                states["checked"] = False
+
+            # ExpandCollapseState: 0=Collapsed, 1=Expanded, 2=PartiallyExpanded,
+            # 3=LeafNode
+            expand_state = element.GetCurrentPropertyValue(_UIA_IS_EXPANDED_PROPERTY_ID)
+            states["expanded"] = int(expand_state) in (1, 2)
+
+            states["read_only"] = bool(
+                element.GetCurrentPropertyValue(_UIA_IS_READ_ONLY_PROPERTY_ID)
+            )
+            states["required"] = bool(
+                element.GetCurrentPropertyValue(_UIA_IS_REQUIRED_FOR_FORM_PROPERTY_ID)
+            )
+            states["is_password"] = bool(
+                element.GetCurrentPropertyValue(_UIA_IS_PASSWORD_PROPERTY_ID)
+            )
+            states["offscreen"] = bool(
+                element.GetCurrentPropertyValue(_UIA_IS_OFFSCREEN_PROPERTY_ID)
+            )
+
+            return {
+                "role": role,
+                "name": str(name) if name else None,
+                "states": states,
+            }
+        except ElementNotFoundError:
+            raise
+        except BackendUnavailableError:
+            raise
+        except Exception as exc:
+            raise ElementNotFoundError(f"Failed to read element info: {exc}") from exc
 
     def is_valid(self, element: NativeHandle) -> bool:
         """Check whether a native element reference is still valid.
