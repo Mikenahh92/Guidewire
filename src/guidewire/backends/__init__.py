@@ -13,6 +13,8 @@ Public API re-exports:
     DesktopAction   — StrEnum of 12 supported actions (§4.3)
 """
 
+import sys
+
 from guidewire.backends.base import DesktopBackend
 from guidewire.backends.linux import LinuxBackend
 from guidewire.backends.mock import MockBackend
@@ -23,6 +25,11 @@ from guidewire.backends.types import (
     NativeHandle,
 )
 
+if sys.platform == "win32":
+    from guidewire.backends.windows import WindowsBackend
+else:
+    WindowsBackend = None  # type: ignore[assignment,misc]
+
 __all__ = [
     "DesktopAction",
     "DesktopBackend",
@@ -31,4 +38,5 @@ __all__ = [
     "LinuxBackend",
     "MockBackend",
     "NativeHandle",
+    "WindowsBackend",
 ]

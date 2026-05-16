@@ -30,6 +30,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
 ]
+windows = [
+    "comtypes>=1.4",
+]
 
 [project.scripts]
 guidewire = "guidewire.__main__:main"
