@@ -46,7 +46,7 @@ class WindowsBackend(DesktopBackend):
                 f"WindowsBackend requires the Windows platform (current: {sys.platform!r})"
             )
         try:
-            import comtypes  # noqa: F401 — availability check
+            import comtypes
             import comtypes.client
         except ImportError:
             raise BackendUnavailableError(
@@ -91,19 +91,107 @@ class WindowsBackend(DesktopBackend):
         """
         raise NotImplementedError("get_window_info not yet implemented — see GW-021")
 
-    def focus_window(self, window: NativeHandle) -> None:
-        """Bring a window to the foreground.
+    # -- Private helpers (section 4.2-4.4) -----------------------------------
 
-        .. todo:: Implement via ``IUIAutomationElement`` ``SetFocus`` method
-           or ``SetForegroundWindow`` Win32 API.
+    @staticmethod
+    def _extract_hwnd(window: NativeHandle) -> int:
+        """Extract an HWND integer from a :class:`NativeHandle`.
 
         Args:
             window: Opaque native window handle.
 
+        Returns:
+            The underlying HWND as a positive integer.
+
         Raises:
-            WindowNotFoundError: If the handle is invalid.
+            WindowNotFoundError: If the extracted handle is zero (null window).
         """
-        raise NotImplementedError("focus_window not yet implemented — see GW-021")
+        from guidewire.errors import WindowNotFoundError
+
+        hwnd = int(window)
+        if hwnd == 0:
+            raise WindowNotFoundError("Window handle 0x0 is not a valid window")
+        return hwnd
+
+    def _element_from_handle(self, hwnd: int) -> Any:
+        """Bridge an HWND to an ``IUIAutomationElement`` via COM.
+
+        Args:
+            hwnd: A valid window handle.
+
+        Returns:
+            The COM ``IUIAutomationElement`` for the window.
+        """
+        return self._uia.ElementFromHandle(hwnd)
+
+    # -- DesktopBackend interface (9 abstract methods) -------------------------
+
+    def focus_window(self, window: NativeHandle) -> None:
+        """Bring a window to the foreground.
+
+        Validates the backend is not disposed, extracts and validates the
+        HWND, then calls the Win32 ``SetForegroundWindow`` API.  If the first
+        attempt fails (foreground-lock restriction), a ``keybd_event`` Alt-key
+        workaround is applied (architecture §2.4) and the call is retried once.
+        On success, ``IUIAutomationElement.SetFocus`` is called to set keyboard
+        focus (architecture §2.5).
+
+        Args:
+            window: Opaque native window handle (HWND integer).
+
+        Raises:
+            RuntimeError: If the backend has been disposed.
+            WindowNotFoundError: If the handle does not reference a valid window
+                or ``SetForegroundWindow`` fails to activate it.
+            TypeError: If *window* is not an int-backed NativeHandle.
+            OSError: If an unexpected ctypes / OS error occurs.
+        """
+        import ctypes
+
+        from guidewire.errors import WindowNotFoundError
+
+        if self._disposed:
+            raise RuntimeError("Cannot focus window on a disposed backend")
+
+        try:
+            hwnd = self._extract_hwnd(window)
+        except TypeError as exc:
+            raise TypeError(f"window must be an int-backed NativeHandle: {exc}") from exc
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+
+        if not user32.IsWindow(hwnd):  # type: ignore[attr-defined]
+            raise WindowNotFoundError(
+                f"Window handle {hwnd:#x} is not a valid window"
+            )
+
+        # First attempt: SetForegroundWindow
+        result = user32.SetForegroundWindow(hwnd)  # type: ignore[attr-defined]
+
+        # Foreground-lock workaround (architecture §2.4): simulate an Alt
+        # keypress to convince Windows that user interaction is occurring,
+        # then retry SetForegroundWindow once.
+        if not result:
+            vk_menu = 0x12  # Alt key virtual-key code
+            keyeventf_keyup = 0x0002
+            user32.keybd_event(vk_menu, 0, 0, 0)  # type: ignore[attr-defined]
+            user32.keybd_event(  # type: ignore[attr-defined]
+                vk_menu, 0, keyeventf_keyup, 0,
+            )
+            result = user32.SetForegroundWindow(hwnd)  # type: ignore[attr-defined]
+
+        if not result:
+            raise WindowNotFoundError(
+                f"SetForegroundWindow failed for window handle {hwnd:#x}"
+            )
+
+        # Set UIA keyboard focus (architecture §2.5)
+        try:
+            element = self._element_from_handle(hwnd)
+            element.SetFocus()
+        except Exception:
+            # SetFocus is best-effort; foreground was already set.
+            pass
 
     def snapshot(
         self,

@@ -1,13 +1,15 @@
-"""Tests for the WindowsBackend skeleton (GW-019).
+"""Tests for the WindowsBackend (GW-019 skeleton).
 
 Validates:
 - Module can be imported on any platform (guarded comtypes import).
 - WindowsBackend is a concrete subclass of DesktopBackend.
 - Platform guard raises BackendUnavailableError on non-Windows systems.
 - comtypes-missing guard raises BackendUnavailableError.
-- All 9 abstract methods are present and raise NotImplementedError.
+- 8 abstract methods raise NotImplementedError (remaining stubs).
 - dispose() performs full COM cleanup and is idempotent.
 - Constructor signature matches DesktopBackend contract.
+
+Focus-window tests live in ``test_windows_focus_window.py`` (architecture §3.2).
 """
 
 import inspect
@@ -141,7 +143,7 @@ class TestPlatformGuard:
 
 
 class TestStubMethods:
-    """Verify all 9 methods raise NotImplementedError before real implementation."""
+    """Verify stub methods raise NotImplementedError (focus_window tested separately)."""
 
     @pytest.fixture()
     def backend(self) -> WindowsBackend:
@@ -165,12 +167,6 @@ class TestStubMethods:
 
         with pytest.raises(NotImplementedError, match="get_window_info"):
             backend.get_window_info(NativeHandle("fake"))
-
-    def test_focus_window_raises_not_implemented(self, backend: WindowsBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
-        with pytest.raises(NotImplementedError, match="focus_window"):
-            backend.focus_window(NativeHandle("fake"))
 
     def test_snapshot_raises_not_implemented(self, backend: WindowsBackend) -> None:
         from guidewire.backends.types import NativeHandle
