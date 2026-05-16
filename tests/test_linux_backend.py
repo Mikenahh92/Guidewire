@@ -1,5 +1,5 @@
 """Tests for the LinuxBackend skeleton (GW-028), list_windows (GW-029),
-and element interaction methods (GW-032).
+snapshot (GW-031), and element interaction methods (GW-032).
 
 Validates:
 - Module can be imported on any platform (guarded pyatspi import).
@@ -17,6 +17,12 @@ Validates:
 - is_valid probes element liveness without raising.
 - find_elements walks the AT-SPI tree matching role/name.
 - dispose() sets internal state without error.
+- snapshot() walks the AT-SPI tree, normalizes elements, and returns a dict.
+- snapshot() respects max_depth and max_nodes limits.
+- snapshot() filters offscreen descendants (depth > 0).
+- snapshot() silently skips defunct/inaccessible nodes (§5.4).
+- snapshot() extracts role, name, states, bounds, and actions from each node.
+- snapshot() returns a dict compatible with the DesktopElement schema.
 """
 
 import sys
@@ -26,6 +32,7 @@ import pytest
 
 from guidewire.backends.base import DesktopBackend
 from guidewire.backends.linux import LinuxBackend
+from guidewire.backends.types import NativeHandle
 from guidewire.errors import BackendUnavailableError
 
 # ---------------------------------------------------------------------------
@@ -338,12 +345,6 @@ class TestStubMethods:
 
         with pytest.raises(NotImplementedError, match="focus_window"):
             backend.focus_window(NativeHandle("fake"))
-
-    def test_snapshot_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
-        with pytest.raises(NotImplementedError, match="snapshot"):
-            backend.snapshot(NativeHandle("fake"))
 
     def test_dispose_sets_disposed_flag(self, backend: LinuxBackend) -> None:
         """dispose() must set _disposed to True without raising."""
@@ -1008,6 +1009,484 @@ class TestFindElements:
 
 
 # ---------------------------------------------------------------------------
+# Snapshot tests (GW-031)
+# ---------------------------------------------------------------------------
+
+
+class TestSnapshot:
+    """Tests for LinuxBackend.snapshot (GW-031).
+
+    Validates:
+    - Returns a dict with DesktopElement schema keys.
+    - Extracts role, name, states, bounds, and actions from accessible nodes.
+    - Walks children recursively respecting max_depth.
+    - Respects max_nodes limit.
+    - Filters offscreen descendants (depth > 0).
+    - Silently skips defunct/inaccessible nodes per §5.4.
+    - BackendUnavailableError raised for disposed backend.
+    - Handles single-node (leaf) windows with no children.
+    """
+
+    @pytest.fixture()
+    def backend(self) -> LinuxBackend:
+        """Create a LinuxBackend with mocked pyatspi, bypassing platform guard."""
+        mock_pyatspi = _make_mock_pyatspi(showing_count=0, hidden_count=0)
+        original_platform = sys.platform
+        original_pyatspi = sys.modules.get("pyatspi")
+        sys.platform = "linux"
+        sys.modules["pyatspi"] = mock_pyatspi
+        yield LinuxBackend()
+        sys.platform = original_platform
+        if original_pyatspi is None:
+            sys.modules.pop("pyatspi", None)
+        else:
+            sys.modules["pyatspi"] = original_pyatspi
+
+    # -- Helper to build mock accessible trees for snapshot ---
+
+    @staticmethod
+    def _make_accessible(
+        role: str = "frame",
+        name: str | None = "Test",
+        description: str | None = None,
+        states: dict[str, bool] | None = None,
+        bounds: tuple[int, int, int, int] | None = (0, 0, 800, 600),
+        actions: list[str] | None = None,
+        text_content: str | None = None,
+        value: float | None = None,
+        children: list | None = None,
+        child_count: int | None = None,
+    ) -> MagicMock:
+        """Create a mock pyatspi.Accessible for snapshot tests.
+
+        Args:
+            role: AT-SPI role string (e.g. 'frame', 'push button').
+            name: Accessible name.
+            description: Accessible description.
+            states: Dict of state names to boolean presence.
+            bounds: (x, y, width, height) tuple.
+            actions: List of action name strings.
+            text_content: Text from Text interface.
+            value: Value from Value interface.
+            children: List of child mock accessibles.
+            child_count: Override child count (defaults to len(children)).
+        """
+        acc = MagicMock()
+        acc.get_role.return_value = role
+        acc.get_name.return_value = name
+        acc.get_description.return_value = description
+
+        # States
+        state_names = list(states.keys()) if states else []
+        mock_state_set = MagicMock()
+        mock_state_set.get_states.return_value = state_names
+        mock_state_set.contains.return_value = False  # not used by snapshot
+        acc.getState.return_value = mock_state_set
+
+        # Bounds
+        if bounds:
+            mock_ext = MagicMock()
+            mock_ext.x = bounds[0]
+            mock_ext.y = bounds[1]
+            mock_ext.width = bounds[2]
+            mock_ext.height = bounds[3]
+            acc.getExtent.return_value = mock_ext
+        else:
+            acc.getExtent.return_value = None
+
+        # Text interface
+        if text_content is not None:
+            mock_text = MagicMock()
+            mock_text.characterCount = len(text_content)
+            mock_text.getText.return_value = text_content
+            acc.get_text.return_value = mock_text
+        else:
+            acc.get_text.return_value = None
+
+        # Value interface
+        if value is not None:
+            mock_val = MagicMock()
+            mock_val.currentValue = value
+            acc.get_value.return_value = mock_val
+        else:
+            acc.get_value.return_value = None
+
+        # Actions
+        if actions:
+            mock_action = MagicMock()
+            mock_action.nActions = len(actions)
+            mock_action.getName.side_effect = lambda i: actions[i] if i < len(actions) else None
+            acc.get_action.return_value = mock_action
+        else:
+            acc.get_action.return_value = None
+
+        # Children
+        _children = children or []
+        acc.childCount = child_count if child_count is not None else len(_children)
+        acc.getChildAtIndex.side_effect = lambda i: _children[i] if i < len(_children) else None
+
+        return acc
+
+    # -- basic snapshot tests ---
+
+    def test_snapshot_returns_dict(self, backend: LinuxBackend) -> None:
+        """snapshot() must return a dict."""
+        root = self._make_accessible(role="frame", name="Main Window")
+        result = backend.snapshot(NativeHandle(root))
+        assert isinstance(result, dict)
+
+    def test_snapshot_dict_has_required_keys(self, backend: LinuxBackend) -> None:
+        """snapshot() dict must contain DesktopElement schema keys."""
+        root = self._make_accessible(role="frame", name="Main Window")
+        result = backend.snapshot(NativeHandle(root))
+        for key in ("ref", "role", "name", "states", "bounds", "actions"):
+            assert key in result, f"Missing key: {key}"
+
+    def test_snapshot_extracts_role(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract and normalize the AT-SPI role."""
+        root = self._make_accessible(role="frame", name="W")
+        result = backend.snapshot(NativeHandle(root))
+        # 'frame' maps to 'pane' per _LINUX_ROLES
+        assert result["role"] == "pane"
+
+    def test_snapshot_extracts_name(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract the accessible name."""
+        root = self._make_accessible(role="frame", name="My Window")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["name"] == "My Window"
+
+    def test_snapshot_extracts_button_role(self, backend: LinuxBackend) -> None:
+        """snapshot() normalizes 'push button' to 'button'."""
+        root = self._make_accessible(role="push button", name="OK")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "button"
+
+    def test_snapshot_extracts_entry_role(self, backend: LinuxBackend) -> None:
+        """snapshot() normalizes 'entry' to 'text_input'."""
+        root = self._make_accessible(role="entry", name="Search")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "text_input"
+
+    def test_snapshot_extracts_checkbox_role(self, backend: LinuxBackend) -> None:
+        """snapshot() normalizes 'check box' to 'checkbox'."""
+        root = self._make_accessible(role="check box", name="Enable")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "checkbox"
+
+    def test_snapshot_extracts_states(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract and normalize states.
+
+        States dict keys represent present states (value=True in AT-SPI).
+        Absent states default to None in ElementStates.
+        """
+        root = self._make_accessible(
+            role="push button",
+            name="Click",
+            states={"enabled": True, "visible": True},
+        )
+        result = backend.snapshot(NativeHandle(root))
+        states = result["states"]
+        assert states["enabled"] is True
+        assert states["visible"] is True
+        # 'focused' was not in the states dict, so it should be absent
+        assert "focused" not in states
+
+    def test_snapshot_extracts_bounds(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract bounding rectangle."""
+        root = self._make_accessible(role="frame", name="W", bounds=(10, 20, 800, 600))
+        result = backend.snapshot(NativeHandle(root))
+        bounds = result["bounds"]
+        assert bounds["x"] == 10.0
+        assert bounds["y"] == 20.0
+        assert bounds["width"] == 800.0
+        assert bounds["height"] == 600.0
+
+    def test_snapshot_extracts_actions(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract and normalize actions."""
+        root = self._make_accessible(
+            role="push button",
+            name="OK",
+            actions=["click", "activate"],
+        )
+        result = backend.snapshot(NativeHandle(root))
+        actions = result["actions"]
+        assert "click" in actions
+        assert "invoke" in actions  # 'activate' normalizes to 'invoke'
+
+    def test_snapshot_no_bounds_when_absent(self, backend: LinuxBackend) -> None:
+        """snapshot() must handle missing bounds gracefully."""
+        root = self._make_accessible(role="frame", name="W", bounds=None)
+        result = backend.snapshot(NativeHandle(root))
+        assert result["bounds"] is None
+
+    def test_snapshot_no_children_for_leaf(self, backend: LinuxBackend) -> None:
+        """snapshot() must return empty children list for leaf nodes."""
+        root = self._make_accessible(role="push button", name="OK", children=[])
+        result = backend.snapshot(NativeHandle(root))
+        assert result["children"] is None or result["children"] == []
+
+    # -- tree walking tests ---
+
+    def test_snapshot_walks_children(self, backend: LinuxBackend) -> None:
+        """snapshot() must include children in the tree."""
+        child = self._make_accessible(role="push button", name="OK", children=[])
+        root = self._make_accessible(role="frame", name="Window", children=[child])
+        result = backend.snapshot(NativeHandle(root))
+        children = result.get("children") or []
+        assert len(children) == 1
+        assert children[0]["role"] == "button"
+        assert children[0]["name"] == "OK"
+
+    def test_snapshot_multiple_children(self, backend: LinuxBackend) -> None:
+        """snapshot() must include all children at the same level."""
+        btn1 = self._make_accessible(role="push button", name="OK", children=[])
+        btn2 = self._make_accessible(role="push button", name="Cancel", children=[])
+        root = self._make_accessible(role="frame", name="Dialog", children=[btn1, btn2])
+        result = backend.snapshot(NativeHandle(root))
+        children = result.get("children") or []
+        assert len(children) == 2
+
+    def test_snapshot_nested_children(self, backend: LinuxBackend) -> None:
+        """snapshot() must walk nested children to multiple depths."""
+        inner = self._make_accessible(role="entry", name="Field", children=[])
+        outer = self._make_accessible(role="panel", name="Panel", children=[inner])
+        root = self._make_accessible(role="frame", name="Window", children=[outer])
+        result = backend.snapshot(NativeHandle(root), max_depth=4)
+        children = result.get("children") or []
+        assert len(children) == 1
+        assert children[0]["role"] == "pane"
+        inner_children = children[0].get("children") or []
+        assert len(inner_children) == 1
+        assert inner_children[0]["role"] == "text_input"
+
+    def test_snapshot_respects_max_depth(self, backend: LinuxBackend) -> None:
+        """snapshot() must not traverse beyond max_depth."""
+        deep = self._make_accessible(role="label", name="Deep", children=[])
+        mid = self._make_accessible(role="panel", name="Mid", children=[deep])
+        root = self._make_accessible(role="frame", name="Root", children=[mid])
+        result = backend.snapshot(NativeHandle(root), max_depth=1)
+        children = result.get("children") or []
+        assert len(children) == 1
+        # max_depth=1 means root + 1 level; children of children should not appear
+        mid_children = children[0].get("children") or []
+        assert len(mid_children) == 0
+
+    def test_snapshot_max_depth_zero(self, backend: LinuxBackend) -> None:
+        """snapshot() with max_depth=0 must return root only, no children."""
+        child = self._make_accessible(role="push button", name="OK", children=[])
+        root = self._make_accessible(role="frame", name="W", children=[child])
+        result = backend.snapshot(NativeHandle(root), max_depth=0)
+        children = result.get("children") or []
+        assert len(children) == 0
+
+    def test_snapshot_respects_max_nodes(self, backend: LinuxBackend) -> None:
+        """snapshot() must stop adding nodes when max_nodes is reached."""
+        children = [
+            self._make_accessible(role="push button", name=f"Btn {i}", children=[])
+            for i in range(10)
+        ]
+        root = self._make_accessible(role="frame", name="W", children=children)
+        result = backend.snapshot(NativeHandle(root), max_depth=4, max_nodes=3)
+        # Count all nodes in the tree
+        all_nodes = [result]
+        queue = [result]
+        while queue:
+            current = queue.pop(0)
+            for c in current.get("children") or []:
+                all_nodes.append(c)
+                queue.append(c)
+        assert len(all_nodes) <= 3
+
+    # -- offscreen filtering ---
+
+    def test_snapshot_filters_offscreen_descendants(self, backend: LinuxBackend) -> None:
+        """snapshot() must exclude offscreen descendants (depth > 0)."""
+        offscreen_child = self._make_accessible(
+            role="push button",
+            name="Hidden",
+            states={"offscreen": True, "enabled": True},
+            children=[],
+        )
+        root = self._make_accessible(role="frame", name="Window", children=[offscreen_child])
+        result = backend.snapshot(NativeHandle(root))
+        children = result.get("children") or []
+        assert len(children) == 0  # offscreen child filtered out
+
+    def test_snapshot_root_included_when_offscreen(self, backend: LinuxBackend) -> None:
+        """snapshot() must include root even when offscreen (depth 0)."""
+        root = self._make_accessible(
+            role="frame",
+            name="Window",
+            states={"offscreen": True, "enabled": True},
+            children=[],
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "pane"
+        assert result["name"] == "Window"
+
+    # -- defunct/inaccessible node handling ---
+
+    def test_snapshot_handles_defunct_child_properties(self, backend: LinuxBackend) -> None:
+        """snapshot() must handle children with failing property reads per §5.4.
+
+        Individual property reads on defunct nodes are guarded; the node
+        appears with empty/default values rather than crashing.
+        """
+        good_child = self._make_accessible(role="push button", name="OK", children=[])
+        defunct_child = MagicMock()
+        defunct_child.get_role.side_effect = RuntimeError("defunct")
+        defunct_child.get_name.side_effect = RuntimeError("defunct")
+        defunct_child.get_description.side_effect = RuntimeError("defunct")
+        defunct_child.getState.side_effect = RuntimeError("defunct")
+        defunct_child.getExtent.side_effect = RuntimeError("defunct")
+        defunct_child.get_text.side_effect = RuntimeError("defunct")
+        defunct_child.get_value.side_effect = RuntimeError("defunct")
+        defunct_child.get_action.side_effect = RuntimeError("defunct")
+        defunct_child.childCount = 0
+        root = self._make_accessible(
+            role="frame", name="Window", children=[good_child, defunct_child]
+        )
+        # Must NOT raise
+        result = backend.snapshot(NativeHandle(root))
+        children = result.get("children") or []
+        assert len(children) == 2
+        # Good child is intact
+        assert children[0]["role"] == "button"
+        assert children[0]["name"] == "OK"
+        # Defunct child has empty/default properties
+        assert children[1]["role"] == ""
+
+    def test_snapshot_skips_child_with_get_child_at_index_error(
+        self, backend: LinuxBackend
+    ) -> None:
+        """snapshot() must skip children when getChildAtIndex raises per §5.4."""
+        good_child = self._make_accessible(role="push button", name="OK", children=[])
+        root = self._make_accessible(
+            role="frame",
+            name="Window",
+            children=[],
+            child_count=2,
+        )
+
+        call_count = [0]
+
+        def _get_child(idx):
+            call_count[0] += 1
+            if idx == 0:
+                return good_child
+            raise RuntimeError("defunct child")
+
+        root.getChildAtIndex.side_effect = _get_child
+        result = backend.snapshot(NativeHandle(root))
+        children = result.get("children") or []
+        assert len(children) == 1
+        assert children[0]["name"] == "OK"
+
+    def test_snapshot_skips_none_children(self, backend: LinuxBackend) -> None:
+        """snapshot() must skip None children returned by getChildAtIndex."""
+        root = self._make_accessible(
+            role="frame",
+            name="Window",
+            children=[],
+            child_count=2,  # Claim 2 children but provide 0
+        )
+        root.getChildAtIndex.return_value = None
+        result = backend.snapshot(NativeHandle(root))
+        children = result.get("children") or []
+        assert len(children) == 0
+
+    def test_snapshot_handles_defunct_root(self, backend: LinuxBackend) -> None:
+        """snapshot() must return a valid dict even when root properties fail.
+
+        Individual property reads are guarded; the result has a fallback role
+        when get_role() fails.
+        """
+        defunct_root = MagicMock()
+        defunct_root.get_role.side_effect = RuntimeError("defunct")
+        defunct_root.get_name.return_value = None
+        defunct_root.get_description.return_value = None
+        defunct_root.getState.return_value.get_states.return_value = []
+        defunct_root.getExtent.return_value = None
+        defunct_root.get_text.return_value = None
+        defunct_root.get_value.return_value = None
+        defunct_root.get_action.return_value = None
+        defunct_root.childCount = 0
+        result = backend.snapshot(NativeHandle(defunct_root))
+        assert isinstance(result, dict)
+        # When role extraction fails, normalize_element falls back to role.lower() of ""
+        assert result["role"] == ""
+
+    # -- disposed state ---
+
+    def test_snapshot_disposed_raises(self, backend: LinuxBackend) -> None:
+        """snapshot() on disposed backend raises BackendUnavailableError."""
+        backend.dispose()
+        root = self._make_accessible(role="frame", name="W")
+        with pytest.raises(BackendUnavailableError, match="disposed"):
+            backend.snapshot(NativeHandle(root))
+
+    # -- description and text extraction ---
+
+    def test_snapshot_extracts_description(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract accessible description."""
+        root = self._make_accessible(
+            role="push button",
+            name="Save",
+            description="Save the current document",
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result.get("description") == "Save the current document"
+
+    def test_snapshot_extracts_text_content(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract text via the Text interface."""
+        root = self._make_accessible(
+            role="entry",
+            name="Search",
+            text_content="hello world",
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result.get("text") == "hello world"
+
+    def test_snapshot_extracts_value(self, backend: LinuxBackend) -> None:
+        """snapshot() must extract value via the Value interface."""
+        root = self._make_accessible(
+            role="slider",
+            name="Volume",
+            value=0.75,
+        )
+        result = backend.snapshot(NativeHandle(root))
+        assert result.get("value") == 0.75
+
+    # -- role normalization edge cases ---
+
+    def test_snapshot_unknown_role_fallback(self, backend: LinuxBackend) -> None:
+        """snapshot() must fall back to lowercased role for unknown roles."""
+        root = self._make_accessible(role="some custom widget", name="X")
+        result = backend.snapshot(NativeHandle(root))
+        # Unknown roles fall back to role.lower()
+        assert result["role"] == "some custom widget"
+
+    def test_snapshot_empty_name(self, backend: LinuxBackend) -> None:
+        """snapshot() must handle empty/None name (omitted from dict)."""
+        root = self._make_accessible(role="frame", name="")
+        result = backend.snapshot(NativeHandle(root))
+        # to_dict() omits None fields
+        assert "name" not in result
+
+    def test_snapshot_dialog_role(self, backend: LinuxBackend) -> None:
+        """snapshot() normalizes 'dialog' role correctly."""
+        root = self._make_accessible(role="dialog", name="Confirm")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "dialog"
+
+    def test_snapshot_window_role(self, backend: LinuxBackend) -> None:
+        """snapshot() normalizes 'window' role correctly."""
+        root = self._make_accessible(role="window", name="Main")
+        result = backend.snapshot(NativeHandle(root))
+        assert result["role"] == "window"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -1078,8 +1557,15 @@ def _patch_list_windows_children(backend: LinuxBackend, mock_pyatspi: MagicMock)
 
     live_mock = _sys.modules.get("pyatspi")
     if live_mock is not None:
-        for attr in ("ROLE_FRAME", "ROLE_DIALOG", "ROLE_WINDOW", "ROLE_DESKTOP_FRAME",
-                      "ROLE_PANEL", "ROLE_TOOLTIP", "STATE_SHOWING"):
+        for attr in (
+            "ROLE_FRAME",
+            "ROLE_DIALOG",
+            "ROLE_WINDOW",
+            "ROLE_DESKTOP_FRAME",
+            "ROLE_PANEL",
+            "ROLE_TOOLTIP",
+            "STATE_SHOWING",
+        ):
             if hasattr(mock_pyatspi, attr):
                 setattr(live_mock, attr, getattr(mock_pyatspi, attr))
     mock_desktop = mock_pyatspi.Registry.getDesktop.return_value

@@ -8,19 +8,21 @@ instantiation time).
 
 Implementation status:
 - ``list_windows`` — implemented (GW-029)
+- ``snapshot`` — implemented (GW-031)
 - ``get_window_info``, ``focus_window`` — pending
-- ``snapshot`` — pending
 - ``find_elements`` — implemented (GW-032)
 - ``perform_action`` — implemented (GW-032)
 - ``get_element_info`` — implemented (GW-032)
 - ``is_valid`` — implemented (GW-032)
 """
 
+import contextlib
 import logging
 import sys
 from typing import Any
 
 from guidewire.backends.base import DesktopBackend
+from guidewire.backends.normalize import normalize_element
 from guidewire.backends.types import DesktopAction, NativeHandle
 from guidewire.errors import (
     ActionNotSupportedError,
@@ -28,6 +30,7 @@ from guidewire.errors import (
     ElementNotFoundError,
     StaleElementReferenceError,
 )
+from guidewire.models import NormalizedElement
 
 logger = logging.getLogger(__name__)
 
@@ -161,23 +164,220 @@ class LinuxBackend(DesktopBackend):
         max_depth: int = 4,
         max_nodes: int = 500,
     ) -> dict[str, Any]:
-        """Return an accessibility snapshot as a tree dict.
+        """Return an accessibility snapshot as a tree dict (GW-031).
 
-        .. todo:: Walk the AT-SPI tree rooted at *window*, normalizing
-           roles/states/actions via ``guidewire.models.mappings``.
+        Walks the AT-SPI accessibility tree rooted at *window* using
+        ``pyatspi.Accessible`` child iteration, extracting role, name,
+        states, value, bounds, and actions from each accessible node.
+        Properties are normalized via the cross-platform mapping tables
+        in :mod:`guidewire.models.mappings`.
 
         Args:
-            window: Opaque native window handle.
-            max_depth: Maximum tree depth (default 4).
-            max_nodes: Maximum nodes to include (default 500).
+            window: Opaque native window handle (``pyatspi.Accessible``).
+            max_depth: Maximum tree depth to traverse (default 4).
+            max_nodes: Maximum number of nodes to include (default 500).
 
         Returns:
-            Dict matching the DesktopElement schema.
+            Dict matching the DesktopElement schema with keys:
+            ``ref``, ``role``, ``name``, ``states``, ``bounds``,
+            ``actions``, ``children``.
 
         Raises:
-            WindowNotFoundError: If the handle is invalid.
+            BackendUnavailableError: If the backend is disposed.
         """
-        raise NotImplementedError("snapshot not yet implemented")
+        if self._disposed:
+            raise BackendUnavailableError("LinuxBackend has been disposed")
+
+        accessible = window
+        node = self._walk_tree(accessible, max_depth=max_depth, max_nodes=max_nodes)
+        if node is None:
+            fallback = NormalizedElement(
+                ref=str(id(accessible)),
+                backend_id="",
+                role="unknown",
+            )
+            return fallback.to_dict()
+        return node.to_dict()
+
+    # -- Internal snapshot helpers --------------------------------------------
+
+    def _extract_element_node(self, accessible: Any) -> NormalizedElement:
+        """Extract properties from a single ``pyatspi.Accessible``.
+
+        Reads role, name, description, value (via Text interface),
+        states, bounds, and actions, then normalizes via
+        :func:`~guidewire.backends.normalize.normalize_element`.
+
+        Args:
+            accessible: A ``pyatspi.Accessible`` object.
+
+        Returns:
+            A :class:`~guidewire.models.NormalizedElement` with all fields
+            populated from the accessible node.
+        """
+        # --- Role ---
+        role_name = ""
+        try:
+            role = accessible.get_role()
+            role_name = role if isinstance(role, str) else str(role)
+        except Exception:
+            pass
+
+        # --- Name ---
+        name = None
+        with contextlib.suppress(Exception):
+            name = accessible.get_name() or None
+
+        # --- Description ---
+        description = None
+        with contextlib.suppress(Exception):
+            description = accessible.get_description() or None
+
+        # --- Value (via Text interface) ---
+        value = None
+        text_content = None
+        with contextlib.suppress(Exception):
+            text_iface = accessible.get_text()
+            if text_iface is not None:
+                text_content = text_iface.getText(0, text_iface.characterCount) or None
+
+        # Also try Value interface for single-value widgets (sliders, spinboxes)
+        with contextlib.suppress(Exception):
+            value_iface = accessible.get_value()
+            if value_iface is not None:
+                value = value_iface.currentValue or None
+
+        # --- States ---
+        raw_states: dict[str, Any] = {}
+        with contextlib.suppress(Exception):
+            state_set = accessible.getState()
+            state_names = state_set.get_states()
+            for s in state_names:
+                s_name = s if isinstance(s, str) else str(s)
+                raw_states[s_name] = True
+
+        # --- Bounds ---
+        raw_bounds: tuple[int, int, int, int] | None = None
+        with contextlib.suppress(Exception):
+            ext = accessible.getExtent(0)
+            if ext and hasattr(ext, "x"):
+                raw_bounds = (int(ext.x), int(ext.y), int(ext.width), int(ext.height))
+
+        # --- Actions ---
+        raw_actions: list[str] = []
+        with contextlib.suppress(Exception):
+            action_iface = accessible.get_action()
+            if action_iface is not None:
+                n_actions = action_iface.nActions
+                for i in range(n_actions):
+                    action_name = action_iface.getName(i)
+                    if action_name:
+                        raw_actions.append(action_name)
+
+        return normalize_element(
+            platform="linux",
+            ref=str(id(accessible)),
+            backend_id=str(id(accessible)),
+            role=role_name,
+            native_role=role_name if role_name else None,
+            name=name,
+            description=description,
+            value=value,
+            text=text_content,
+            raw_states=raw_states,
+            bounds=raw_bounds,
+            raw_actions=raw_actions,
+        )
+
+    def _walk_tree(
+        self,
+        root_accessible: Any,
+        max_depth: int = 4,
+        max_nodes: int = 500,
+    ) -> NormalizedElement | None:
+        """Recursively walk the AT-SPI tree and build a snapshot dict.
+
+        The root element is always included regardless of offscreen state.
+        Offscreen filtering only applies to descendant nodes.
+
+        Args:
+            root_accessible: The root ``pyatspi.Accessible`` to walk from.
+            max_depth: Maximum depth to traverse.
+            max_nodes: Maximum total nodes (including root).
+
+        Returns:
+            Root :class:`NormalizedElement`, or ``None`` if extraction fails.
+        """
+        counter = [0]
+        node = self._walk_recursive(root_accessible, 0, max_depth, counter, max_nodes)
+        return node
+
+    def _walk_recursive(
+        self,
+        accessible: Any,
+        depth: int,
+        max_depth: int,
+        counter: list[int],
+        max_nodes: int,
+    ) -> NormalizedElement | None:
+        """Recursively walk from *accessible* building a NormalizedElement tree.
+
+        Returns ``None`` for offscreen descendant elements (depth > 0),
+        which the caller filters out of the children list.  The root
+        element (depth 0) is always included.
+
+        Defunct or inaccessible nodes are silently skipped per
+        Architecture §5.4.
+        """
+        if counter[0] >= max_nodes:
+            return NormalizedElement(
+                ref=str(id(accessible)),
+                backend_id="",
+                role="unknown",
+            )
+
+        try:
+            counter[0] += 1
+            node = self._extract_element_node(accessible)
+        except Exception:
+            logger.debug("Skipping inaccessible node at depth %d", depth, exc_info=True)
+            counter[0] -= 1
+            return None
+
+        # Exclude offscreen descendants (but never the root at depth 0)
+        if depth > 0 and node.states.offscreen is True:
+            counter[0] -= 1
+            return None
+
+        if depth < max_depth:
+            children: list[NormalizedElement] = []
+            try:
+                child_count = accessible.childCount
+                for i in range(child_count):
+                    if counter[0] >= max_nodes:
+                        break
+                    try:
+                        child = accessible.getChildAtIndex(i)
+                    except Exception:
+                        logger.debug(
+                            "Skipping inaccessible child %d at depth %d",
+                            i,
+                            depth,
+                            exc_info=True,
+                        )
+                        continue
+                    if child is None:
+                        continue
+                    child_node = self._walk_recursive(
+                        child, depth + 1, max_depth, counter, max_nodes
+                    )
+                    if child_node is not None:
+                        children.append(child_node)
+            except Exception:
+                logger.debug("Error walking children at depth %d", depth, exc_info=True)
+            node.children = children
+
+        return node
 
     def find_elements(
         self,
