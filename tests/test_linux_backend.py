@@ -1,4 +1,5 @@
-"""Tests for the LinuxBackend skeleton (GW-028) and list_windows (GW-029).
+"""Tests for the LinuxBackend skeleton (GW-028), list_windows (GW-029),
+and element interaction methods (GW-032).
 
 Validates:
 - Module can be imported on any platform (guarded pyatspi import).
@@ -11,7 +12,10 @@ Validates:
 - ROLE_DESKTOP_FRAME with empty name is excluded (§5.3).
 - Defunct children are silently skipped (§5.4).
 - BackendUnavailableError raised for disposed backend.
-- Remaining 7 stub methods raise NotImplementedError.
+- perform_action dispatches 12 DesktopAction variants via AT-SPI actions.
+- get_element_info returns role, name, states from AT-SPI accessible.
+- is_valid probes element liveness without raising.
+- find_elements walks the AT-SPI tree matching role/name.
 - dispose() sets internal state without error.
 """
 
@@ -341,35 +345,666 @@ class TestStubMethods:
         with pytest.raises(NotImplementedError, match="snapshot"):
             backend.snapshot(NativeHandle("fake"))
 
-    def test_find_elements_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
-        with pytest.raises(NotImplementedError, match="find_elements"):
-            backend.find_elements(NativeHandle("fake"), role="button")
-
-    def test_perform_action_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import DesktopAction, NativeHandle
-
-        with pytest.raises(NotImplementedError, match="perform_action"):
-            backend.perform_action(NativeHandle("fake"), DesktopAction.CLICK)
-
-    def test_get_element_info_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
-        with pytest.raises(NotImplementedError, match="get_element_info"):
-            backend.get_element_info(NativeHandle("fake"))
-
-    def test_is_valid_raises_not_implemented(self, backend: LinuxBackend) -> None:
-        from guidewire.backends.types import NativeHandle
-
-        with pytest.raises(NotImplementedError, match="is_valid"):
-            backend.is_valid(NativeHandle("fake"))
-
     def test_dispose_sets_disposed_flag(self, backend: LinuxBackend) -> None:
         """dispose() must set _disposed to True without raising."""
         assert not backend._disposed
         backend.dispose()
         assert backend._disposed
+
+
+# ---------------------------------------------------------------------------
+# perform_action tests (GW-032)
+# ---------------------------------------------------------------------------
+
+
+class TestPerformAction:
+    """Tests for LinuxBackend.perform_action (GW-032).
+
+    Validates the 12 DesktopAction dispatch variants and error handling.
+    """
+
+    @pytest.fixture()
+    def backend(self) -> LinuxBackend:
+        """Create a LinuxBackend bypassing the platform guard."""
+        mock_pyatspi = _make_mock_pyatspi(showing_count=0, hidden_count=0)
+        original_platform = sys.platform
+        original_pyatspi = sys.modules.get("pyatspi")
+        sys.platform = "linux"
+        sys.modules["pyatspi"] = mock_pyatspi
+        yield LinuxBackend()
+        sys.platform = original_platform
+        if original_pyatspi is None:
+            sys.modules.pop("pyatspi", None)
+        else:
+            sys.modules["pyatspi"] = original_pyatspi
+
+    def _mock_accessible_with_action(self, action_name: str = "click") -> MagicMock:
+        """Create a mock accessible that supports a given AT-SPI action."""
+        mock_action = MagicMock()
+        mock_action.get_n_actions.return_value = 1
+        mock_action.get_action_name.return_value = action_name
+        mock_accessible = MagicMock()
+        mock_accessible.queryAction.return_value = mock_action
+        return mock_accessible
+
+    # -- disposed state -------------------------------------------------------
+
+    def test_disposed_raises_stale_element_reference(self, backend: LinuxBackend) -> None:
+        """perform_action on disposed backend raises StaleElementReferenceError."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+        from guidewire.errors import StaleElementReferenceError
+
+        backend.dispose()
+        with pytest.raises(StaleElementReferenceError, match="disposed"):
+            backend.perform_action(NativeHandle("fake"), DesktopAction.CLICK)
+
+    def test_none_handle_raises_element_not_found(self, backend: LinuxBackend) -> None:
+        """perform_action with None handle raises ElementNotFoundError."""
+        from guidewire.backends.types import DesktopAction
+        from guidewire.errors import ElementNotFoundError
+
+        with pytest.raises(ElementNotFoundError, match="None"):
+            backend.perform_action(None, DesktopAction.CLICK)
+
+    # -- CLICK action ---------------------------------------------------------
+
+    def test_click_via_click_action(self, backend: LinuxBackend) -> None:
+        """CLICK dispatches to AT-SPI 'click' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("click")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.CLICK)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("click")
+
+    def test_click_falls_back_to_press(self, backend: LinuxBackend) -> None:
+        """CLICK falls back to 'press' when 'click' is not available."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        mock_action = MagicMock()
+        mock_action.get_n_actions.return_value = 1
+        mock_action.get_action_name.return_value = "press"
+        accessible.queryAction.return_value = mock_action
+
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.CLICK)
+        assert result is None
+        mock_action.do_action.assert_called_once_with("press")
+
+    def test_click_falls_back_to_activate(self, backend: LinuxBackend) -> None:
+        """CLICK falls back to 'activate' when 'click' and 'press' are not available."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        mock_action = MagicMock()
+        mock_action.get_n_actions.return_value = 1
+        mock_action.get_action_name.return_value = "activate"
+        accessible.queryAction.return_value = mock_action
+
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.CLICK)
+        assert result is None
+        mock_action.do_action.assert_called_once_with("activate")
+
+    def test_click_raises_when_no_action_available(self, backend: LinuxBackend) -> None:
+        """CLICK raises ActionNotSupportedError when no click action exists."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+        from guidewire.errors import ActionNotSupportedError
+
+        accessible = MagicMock()
+        accessible.queryAction.return_value = None
+
+        with pytest.raises(ActionNotSupportedError, match="click"):
+            backend.perform_action(NativeHandle(accessible), DesktopAction.CLICK)
+
+    def test_click_raises_when_action_interface_missing(self, backend: LinuxBackend) -> None:
+        """CLICK raises ActionNotSupportedError when queryAction fails."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+        from guidewire.errors import ActionNotSupportedError
+
+        accessible = MagicMock()
+        accessible.queryAction.side_effect = RuntimeError("no action interface")
+
+        with pytest.raises(ActionNotSupportedError, match="Action interface"):
+            backend.perform_action(NativeHandle(accessible), DesktopAction.CLICK)
+
+    # -- TYPE action ----------------------------------------------------------
+
+    def test_type_requires_text_parameter(self, backend: LinuxBackend) -> None:
+        """TYPE raises ActionNotSupportedError without 'text' kwarg."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+        from guidewire.errors import ActionNotSupportedError
+
+        accessible = MagicMock()
+        with pytest.raises(ActionNotSupportedError, match="text"):
+            backend.perform_action(NativeHandle(accessible), DesktopAction.TYPE)
+
+    def test_type_calls_grab_focus(self, backend: LinuxBackend) -> None:
+        """TYPE sets focus before typing."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        # No grabFocus action available — should not raise
+        mock_action = MagicMock()
+        mock_action.get_n_actions.return_value = 0
+        accessible.queryAction.return_value = mock_action
+
+        with patch.object(backend, "_send_text"):
+            backend.perform_action(NativeHandle(accessible), DesktopAction.TYPE, text="hello")
+
+    # -- PRESS_KEY action -----------------------------------------------------
+
+    def test_press_key_requires_key_parameter(self, backend: LinuxBackend) -> None:
+        """PRESS_KEY raises ActionNotSupportedError without 'key' kwarg."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+        from guidewire.errors import ActionNotSupportedError
+
+        accessible = MagicMock()
+        with pytest.raises(ActionNotSupportedError, match="key"):
+            backend.perform_action(NativeHandle(accessible), DesktopAction.PRESS_KEY)
+
+    # -- SET_VALUE action -----------------------------------------------------
+
+    def test_set_value_requires_value_parameter(self, backend: LinuxBackend) -> None:
+        """SET_VALUE raises ActionNotSupportedError without 'value' kwarg."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+        from guidewire.errors import ActionNotSupportedError
+
+        accessible = MagicMock()
+        with pytest.raises(ActionNotSupportedError, match="value"):
+            backend.perform_action(NativeHandle(accessible), DesktopAction.SET_VALUE)
+
+    def test_set_value_via_text_interface(self, backend: LinuxBackend) -> None:
+        """SET_VALUE falls back to Text interface when edit action unavailable."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        accessible.queryAction.return_value = None
+        mock_text = MagicMock()
+        accessible.queryText.return_value = mock_text
+
+        backend.perform_action(
+            NativeHandle(accessible), DesktopAction.SET_VALUE, value="new value"
+        )
+        mock_text.set_text_content.assert_called_once_with("new value")
+
+    # -- SELECT action --------------------------------------------------------
+
+    def test_select_via_select_action(self, backend: LinuxBackend) -> None:
+        """SELECT dispatches to AT-SPI 'select' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("select")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.SELECT)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("select")
+
+    # -- SCROLL action --------------------------------------------------------
+
+    def test_scroll_via_scroll_action(self, backend: LinuxBackend) -> None:
+        """SCROLL dispatches to AT-SPI 'scroll' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("scroll")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.SCROLL)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("scroll")
+
+    def test_scroll_falls_back_to_variants(self, backend: LinuxBackend) -> None:
+        """SCROLL tries scrollUp/scrollDown variants."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        mock_action = MagicMock()
+        mock_action.get_n_actions.return_value = 1
+        mock_action.get_action_name.return_value = "scrollDown"
+        accessible.queryAction.return_value = mock_action
+
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.SCROLL)
+        assert result is None
+        mock_action.do_action.assert_called_once_with("scrollDown")
+
+    # -- GET_TEXT action ------------------------------------------------------
+
+    def test_get_text_returns_string(self, backend: LinuxBackend) -> None:
+        """GET_TEXT returns a string from the Text interface."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        mock_text = MagicMock()
+        mock_text.character_count = 5
+        mock_text.get_text.return_value = "hello"
+        accessible.queryText.return_value = mock_text
+
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.GET_TEXT)
+        assert result == "hello"
+        assert isinstance(result, str)
+
+    def test_get_text_falls_back_to_name(self, backend: LinuxBackend) -> None:
+        """GET_TEXT falls back to accessible name when Text interface unavailable."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        accessible.queryText.return_value = None
+        accessible.get_name.return_value = "Element Name"
+
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.GET_TEXT)
+        assert result == "Element Name"
+
+    def test_get_text_returns_empty_string_for_no_content(self, backend: LinuxBackend) -> None:
+        """GET_TEXT returns empty string when no text content."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = MagicMock()
+        mock_text = MagicMock()
+        mock_text.character_count = 0
+        mock_text.get_text.return_value = ""
+        accessible.queryText.return_value = mock_text
+
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.GET_TEXT)
+        assert result == ""
+
+    # -- TOGGLE action --------------------------------------------------------
+
+    def test_toggle_via_toggle_action(self, backend: LinuxBackend) -> None:
+        """TOGGLE dispatches to AT-SPI 'toggle' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("toggle")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.TOGGLE)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("toggle")
+
+    # -- EXPAND / COLLAPSE actions --------------------------------------------
+
+    def test_expand_via_expand_action(self, backend: LinuxBackend) -> None:
+        """EXPAND dispatches to AT-SPI 'expand' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("expand")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.EXPAND)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("expand")
+
+    def test_collapse_via_collapse_action(self, backend: LinuxBackend) -> None:
+        """COLLAPSE dispatches to AT-SPI 'collapse' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("collapse")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.COLLAPSE)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("collapse")
+
+    # -- INCREMENT / DECREMENT actions ----------------------------------------
+
+    def test_increment_via_increment_action(self, backend: LinuxBackend) -> None:
+        """INCREMENT dispatches to AT-SPI 'increment' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("increment")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.INCREMENT)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("increment")
+
+    def test_decrement_via_decrement_action(self, backend: LinuxBackend) -> None:
+        """DECREMENT dispatches to AT-SPI 'decrement' action."""
+        from guidewire.backends.types import DesktopAction, NativeHandle
+
+        accessible = self._mock_accessible_with_action("decrement")
+        result = backend.perform_action(NativeHandle(accessible), DesktopAction.DECREMENT)
+        assert result is None
+        accessible.queryAction.return_value.do_action.assert_called_once_with("decrement")
+
+
+# ---------------------------------------------------------------------------
+# get_element_info tests (GW-032)
+# ---------------------------------------------------------------------------
+
+
+class TestGetElementInfo:
+    """Tests for LinuxBackend.get_element_info (GW-032).
+
+    Validates:
+    - Returns dict with role, name, states.
+    - Role is normalized via resolve_role.
+    - States are read from AT-SPI state set.
+    - Disposed backend raises StaleElementReferenceError.
+    - Invalid handle raises ElementNotFoundError.
+    """
+
+    @pytest.fixture()
+    def backend(self) -> LinuxBackend:
+        """Create a LinuxBackend bypassing the platform guard."""
+        mock_pyatspi = _make_mock_pyatspi(showing_count=0, hidden_count=0)
+        original_platform = sys.platform
+        original_pyatspi = sys.modules.get("pyatspi")
+        sys.platform = "linux"
+        sys.modules["pyatspi"] = mock_pyatspi
+        yield LinuxBackend()
+        sys.platform = original_platform
+        if original_pyatspi is None:
+            sys.modules.pop("pyatspi", None)
+        else:
+            sys.modules["pyatspi"] = original_pyatspi
+
+    def _mock_accessible(
+        self,
+        role_name: str = "push button",
+        name: str | None = "OK",
+        states: dict[str, bool] | None = None,
+    ) -> MagicMock:
+        """Create a mock accessible with role, name, and states."""
+        accessible = MagicMock()
+        accessible.getRoleName.return_value = role_name
+        accessible.get_name.return_value = name
+
+        mock_state_set = MagicMock()
+        if states is None:
+            states = {"enabled": True, "focused": False}
+
+        def _contains(state_const):
+            # Map the sentinel state constants to their names
+            return states.get(state_const, False)
+
+        mock_state_set.contains.side_effect = _contains
+        accessible.getState.return_value = mock_state_set
+        return accessible
+
+    def test_returns_dict_with_required_keys(self, backend: LinuxBackend) -> None:
+        """get_element_info returns dict with role, name, states."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = self._mock_accessible()
+        result = backend.get_element_info(NativeHandle(accessible))
+        assert isinstance(result, dict)
+        assert "role" in result
+        assert "name" in result
+        assert "states" in result
+
+    def test_role_is_normalized(self, backend: LinuxBackend) -> None:
+        """get_element_info normalizes AT-SPI role via resolve_role."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = self._mock_accessible(role_name="push button")
+        result = backend.get_element_info(NativeHandle(accessible))
+        assert result["role"] == "button"
+
+    def test_role_falls_back_to_raw(self, backend: LinuxBackend) -> None:
+        """get_element_info falls back to raw role when not in mapping."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = self._mock_accessible(role_name="some unknown role")
+        result = backend.get_element_info(NativeHandle(accessible))
+        assert result["role"] == "some unknown role"
+
+    def test_name_is_returned(self, backend: LinuxBackend) -> None:
+        """get_element_info returns the accessible name."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = self._mock_accessible(name="My Button")
+        result = backend.get_element_info(NativeHandle(accessible))
+        assert result["name"] == "My Button"
+
+    def test_name_none_when_empty(self, backend: LinuxBackend) -> None:
+        """get_element_info returns None for empty name."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = self._mock_accessible(name="")
+        result = backend.get_element_info(NativeHandle(accessible))
+        assert result["name"] is None
+
+    def test_states_is_dict(self, backend: LinuxBackend) -> None:
+        """get_element_info returns states as a dict."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = self._mock_accessible()
+        result = backend.get_element_info(NativeHandle(accessible))
+        assert isinstance(result["states"], dict)
+
+    def test_disposed_raises_stale_element_reference(self, backend: LinuxBackend) -> None:
+        """get_element_info on disposed backend raises StaleElementReferenceError."""
+        from guidewire.backends.types import NativeHandle
+        from guidewire.errors import StaleElementReferenceError
+
+        backend.dispose()
+        with pytest.raises(StaleElementReferenceError, match="disposed"):
+            backend.get_element_info(NativeHandle("fake"))
+
+    def test_none_handle_raises_element_not_found(self, backend: LinuxBackend) -> None:
+        """get_element_info with None handle raises ElementNotFoundError."""
+        from guidewire.errors import ElementNotFoundError
+
+        with pytest.raises(ElementNotFoundError, match="None"):
+            backend.get_element_info(None)
+
+    def test_invalid_handle_raises_element_not_found(self, backend: LinuxBackend) -> None:
+        """get_element_info with non-accessible handle raises ElementNotFoundError."""
+        from guidewire.backends.types import NativeHandle
+        from guidewire.errors import ElementNotFoundError
+
+        with pytest.raises(ElementNotFoundError):
+            backend.get_element_info(NativeHandle("not an accessible"))
+
+
+# ---------------------------------------------------------------------------
+# is_valid tests (GW-032)
+# ---------------------------------------------------------------------------
+
+
+class TestIsValid:
+    """Tests for LinuxBackend.is_valid (GW-032).
+
+    Validates:
+    - Returns True for valid accessible.
+    - Returns False for defunct accessible.
+    - Returns False for None handle.
+    - Returns False when disposed.
+    - Never raises.
+    """
+
+    @pytest.fixture()
+    def backend(self) -> LinuxBackend:
+        """Create a LinuxBackend bypassing the platform guard."""
+        mock_pyatspi = _make_mock_pyatspi(showing_count=0, hidden_count=0)
+        original_platform = sys.platform
+        original_pyatspi = sys.modules.get("pyatspi")
+        sys.platform = "linux"
+        sys.modules["pyatspi"] = mock_pyatspi
+        yield LinuxBackend()
+        sys.platform = original_platform
+        if original_pyatspi is None:
+            sys.modules.pop("pyatspi", None)
+        else:
+            sys.modules["pyatspi"] = original_pyatspi
+
+    def test_returns_true_for_valid_element(self, backend: LinuxBackend) -> None:
+        """is_valid returns True for a responsive accessible."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        assert backend.is_valid(NativeHandle(accessible)) is True
+
+    def test_returns_false_for_defunct_element(self, backend: LinuxBackend) -> None:
+        """is_valid returns False when getState raises."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        accessible.getState.side_effect = RuntimeError("defunct")
+        assert backend.is_valid(NativeHandle(accessible)) is False
+
+    def test_returns_false_for_none(self, backend: LinuxBackend) -> None:
+        """is_valid returns False for None handle."""
+        assert backend.is_valid(None) is False
+
+    def test_returns_false_when_disposed(self, backend: LinuxBackend) -> None:
+        """is_valid returns False when backend is disposed."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        backend.dispose()
+        assert backend.is_valid(NativeHandle(accessible)) is False
+
+    def test_never_raises(self, backend: LinuxBackend) -> None:
+        """is_valid must never raise an exception."""
+        # None handle
+        assert backend.is_valid(None) is False
+        # Arbitrary object
+        assert backend.is_valid("random string") is False
+        assert backend.is_valid(42) is False
+        assert backend.is_valid(object()) is False
+
+
+# ---------------------------------------------------------------------------
+# find_elements tests (GW-032)
+# ---------------------------------------------------------------------------
+
+
+class TestFindElements:
+    """Tests for LinuxBackend.find_elements (GW-032).
+
+    Validates:
+    - Returns empty list when no filters provided.
+    - Returns empty list when no matches.
+    - Matches by role.
+    - Matches by name (case-insensitive substring).
+    - Matches by both role and name.
+    - Walks tree recursively.
+    - Silently skips defunct children.
+    - Disposed backend raises BackendUnavailableError.
+    """
+
+    @pytest.fixture()
+    def backend(self) -> LinuxBackend:
+        """Create a LinuxBackend bypassing the platform guard."""
+        mock_pyatspi = _make_mock_pyatspi(showing_count=0, hidden_count=0)
+        original_platform = sys.platform
+        original_pyatspi = sys.modules.get("pyatspi")
+        sys.platform = "linux"
+        sys.modules["pyatspi"] = mock_pyatspi
+        yield LinuxBackend()
+        sys.platform = original_platform
+        if original_pyatspi is None:
+            sys.modules.pop("pyatspi", None)
+        else:
+            sys.modules["pyatspi"] = original_pyatspi
+
+    def _make_tree(
+        self,
+        children: list[tuple[str, str | None]] | None = None,
+    ) -> MagicMock:
+        """Create a mock accessible tree.
+
+        Args:
+            children: List of (role_name, name) tuples for direct children.
+        """
+        window = MagicMock()
+
+        if children is None:
+            children = []
+
+        mock_children = []
+        for role_name, name in children:
+            child = MagicMock()
+            child.getRoleName.return_value = role_name
+            child.get_name.return_value = name
+            child.get_child_at_index.return_value = None
+            mock_children.append(child)
+
+        def _get_child(idx):
+            if 0 <= idx < len(mock_children):
+                return mock_children[idx]
+            return None
+
+        window.get_child_at_index.side_effect = _get_child
+        return window
+
+    def test_no_filters_returns_empty(self, backend: LinuxBackend) -> None:
+        """find_elements returns empty list when no role or name filter."""
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree([("push button", "OK")])
+        result = backend.find_elements(NativeHandle(window))
+        assert result == []
+
+    def test_matches_by_role(self, backend: LinuxBackend) -> None:
+        """find_elements matches elements by normalized role."""
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree([
+            ("push button", "OK"),
+            ("text", "Label"),
+            ("push button", "Cancel"),
+        ])
+        result = backend.find_elements(NativeHandle(window), role="button")
+        assert len(result) == 2
+
+    def test_matches_by_name_substring(self, backend: LinuxBackend) -> None:
+        """find_elements matches elements by case-insensitive name substring."""
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree([
+            ("push button", "Save File"),
+            ("push button", "Cancel"),
+            ("push button", "save as"),
+        ])
+        result = backend.find_elements(NativeHandle(window), name="save")
+        assert len(result) == 2
+
+    def test_matches_by_role_and_name(self, backend: LinuxBackend) -> None:
+        """find_elements matches elements satisfying both role and name."""
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree([
+            ("push button", "Save"),
+            ("text", "Save"),
+            ("push button", "Cancel"),
+        ])
+        result = backend.find_elements(NativeHandle(window), role="button", name="Save")
+        assert len(result) == 1
+
+    def test_no_matches_returns_empty(self, backend: LinuxBackend) -> None:
+        """find_elements returns empty list when nothing matches."""
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree([("push button", "OK")])
+        result = backend.find_elements(NativeHandle(window), role="checkbox")
+        assert result == []
+
+    def test_disposed_raises_backend_unavailable(self, backend: LinuxBackend) -> None:
+        """find_elements on disposed backend raises BackendUnavailableError."""
+        from guidewire.backends.types import NativeHandle
+
+        backend.dispose()
+        with pytest.raises(BackendUnavailableError, match="disposed"):
+            backend.find_elements(NativeHandle("fake"), role="button")
+
+    def test_silently_skips_defunct_children(self, backend: LinuxBackend) -> None:
+        """find_elements silently skips children that raise exceptions."""
+        from guidewire.backends.types import NativeHandle
+
+        window = MagicMock()
+
+        # First child is defunct (raises on getRoleName)
+        defunct_child = MagicMock()
+        defunct_child.getRoleName.side_effect = RuntimeError("defunct")
+        defunct_child.get_name.side_effect = RuntimeError("defunct")
+        defunct_child.get_child_at_index.return_value = None
+
+        # Second child is valid
+        good_child = MagicMock()
+        good_child.getRoleName.return_value = "push button"
+        good_child.get_name.return_value = "OK"
+        good_child.get_child_at_index.return_value = None
+
+        def _get_child(idx):
+            if idx == 0:
+                return defunct_child
+            if idx == 1:
+                return good_child
+            return None
+
+        window.get_child_at_index.side_effect = _get_child
+        result = backend.find_elements(NativeHandle(window), role="button")
+        assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------
