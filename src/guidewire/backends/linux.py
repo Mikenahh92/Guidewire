@@ -6,8 +6,11 @@ guarded so that this module can be imported on non-Linux platforms without
 error (the constructor will raise :class:`BackendUnavailableError` at
 instantiation time).
 
-Skeleton implementation — all 9 abstract methods are present but raise
-:exc:`NotImplementedError` pending concrete implementation in later stories.
+Implementation status:
+- ``list_windows`` — implemented (GW-029)
+- ``get_window_info``, ``focus_window`` — pending
+- ``snapshot``, ``find_elements`` — pending
+- ``perform_action``, ``get_element_info``, ``is_valid`` — pending
 """
 
 import sys
@@ -44,11 +47,10 @@ class LinuxBackend(DesktopBackend):
     def __init__(self) -> None:
         if sys.platform != "linux":
             raise BackendUnavailableError(
-                "LinuxBackend requires the Linux platform "
-                f"(current: {sys.platform!r})"
+                f"LinuxBackend requires the Linux platform (current: {sys.platform!r})"
             )
         try:
-            import pyatspi  # noqa: F401 — availability check
+            import pyatspi  # availability check
         except ImportError:
             raise BackendUnavailableError(
                 "LinuxBackend requires the 'pyatspi' package "
@@ -56,17 +58,65 @@ class LinuxBackend(DesktopBackend):
             ) from None
         self._disposed: bool = False
 
+        import pyatspi
+
+        self._desktop = pyatspi.Registry.getDesktop(0)
+
     # -- DesktopBackend interface (9 abstract methods) -------------------------
 
     def list_windows(self) -> list[NativeHandle]:
         """List all visible top-level application windows.
 
-        .. todo:: Implement via ``pyatspi.Registry.getDesktop(0).children``.
+        Uses ``self._desktop`` (stored at construction) to iterate the
+        AT-SPI2 desktop children, collecting only those that:
+
+        1. Have AT-SPI2 role ``ROLE_FRAME``, ``ROLE_DIALOG``, or
+           ``ROLE_WINDOW`` (Architecture §5.3).
+        2. Include the ``STATE_SHOWING`` state (off-screen / hidden
+           windows are filtered out).
+        3. Are not ``ROLE_DESKTOP_FRAME`` entries with an empty name
+           (Architecture §5.3).
+
+        Defunct or inaccessible children are silently skipped per
+        Architecture §5.4.
 
         Returns:
-            List of opaque native window handles.
+            List of opaque native window handles (``pyatspi.Accessible``
+            objects wrapped in :class:`NativeHandle`).
+
+        Raises:
+            BackendUnavailableError: If the backend is disposed.
         """
-        raise NotImplementedError("list_windows not yet implemented")
+        if self._disposed:
+            raise BackendUnavailableError("LinuxBackend has been disposed")
+
+        import logging
+
+        import pyatspi
+
+        _log = logging.getLogger(__name__)
+        _valid_roles = {
+            pyatspi.ROLE_FRAME,
+            pyatspi.ROLE_DIALOG,
+            pyatspi.ROLE_WINDOW,
+        }
+
+        result: list[NativeHandle] = []
+        for child in self._desktop.children:
+            try:
+                state_set = child.getState()
+                if not state_set.contains(pyatspi.STATE_SHOWING):
+                    continue
+                role = child.get_role()
+                if role not in _valid_roles:
+                    continue
+                if role == pyatspi.ROLE_DESKTOP_FRAME and not (child.get_name() or "").strip():
+                    continue
+                result.append(NativeHandle(child))
+            except Exception:
+                _log.debug("Skipping inaccessible desktop child", exc_info=True)
+                continue
+        return result
 
     def get_window_info(self, window: NativeHandle) -> dict[str, Any]:
         """Return window metadata as a dict.
