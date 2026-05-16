@@ -1,0 +1,454 @@
+{
+  "_metadata": {
+    "captured_at": "2026-05-16T12:00:00Z",
+    "os_version": "Ubuntu 24.04 LTS (GNOME 46)",
+    "app_name": "gedit",
+    "guidewire_version": "0.1.0",
+    "max_depth": 4,
+    "max_nodes": 500
+  },
+  "snapshot": {
+    "ref": "e0",
+    "backend_id": "0x7f8a1c002000",
+    "role": "window",
+    "native_role": "window",
+    "name": "Untitled Document - gedit",
+    "states": {
+      "enabled": true,
+      "visible": true
+    },
+    "bounds": {
+      "x": 100,
+      "y": 100,
+      "width": 900,
+      "height": 650
+    },
+    "actions": [],
+    "children": [
+      {
+        "ref": "e1",
+        "backend_id": "0x7f8a1c002100",
+        "role": "menu_bar",
+        "native_role": "menu bar",
+        "name": "",
+        "states": {
+          "enabled": true,
+          "visible": true
+        },
+        "bounds": {
+          "x": 100,
+          "y": 100,
+          "width": 900,
+          "height": 28
+        },
+        "actions": [],
+        "children": [
+          {
+            "ref": "e2",
+            "backend_id": "0x7f8a1c002200",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "File",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 100,
+              "y": 100,
+              "width": 36,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e3",
+            "backend_id": "0x7f8a1c002300",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "Edit",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 136,
+              "y": 100,
+              "width": 36,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e4",
+            "backend_id": "0x7f8a1c002400",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "View",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 172,
+              "y": 100,
+              "width": 40,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e5",
+            "backend_id": "0x7f8a1c002500",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "Search",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 212,
+              "y": 100,
+              "width": 50,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e6",
+            "backend_id": "0x7f8a1c002600",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "Tools",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 262,
+              "y": 100,
+              "width": 44,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e7",
+            "backend_id": "0x7f8a1c002700",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "Documents",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 306,
+              "y": 100,
+              "width": 72,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e8",
+            "backend_id": "0x7f8a1c002800",
+            "role": "menu_item",
+            "native_role": "menu item",
+            "name": "Help",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 378,
+              "y": 100,
+              "width": 40,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "ref": "e9",
+        "backend_id": "0x7f8a1c002900",
+        "role": "toolbar",
+        "native_role": "tool bar",
+        "name": "",
+        "states": {
+          "enabled": true,
+          "visible": true
+        },
+        "bounds": {
+          "x": 100,
+          "y": 128,
+          "width": 900,
+          "height": 36
+        },
+        "actions": [],
+        "children": [
+          {
+            "ref": "e10",
+            "backend_id": "0x7f8a1c002a00",
+            "role": "toggle_button",
+            "native_role": "toggle button",
+            "name": "New",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 100,
+              "y": 128,
+              "width": 36,
+              "height": 36
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e11",
+            "backend_id": "0x7f8a1c002b00",
+            "role": "button",
+            "native_role": "push button",
+            "name": "Open",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 136,
+              "y": 128,
+              "width": 36,
+              "height": 36
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e12",
+            "backend_id": "0x7f8a1c002c00",
+            "role": "button",
+            "native_role": "push button",
+            "name": "Save",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 172,
+              "y": 128,
+              "width": 36,
+              "height": 36
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e13",
+            "backend_id": "0x7f8a1c002d00",
+            "role": "button",
+            "native_role": "push button",
+            "name": "Undo",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 220,
+              "y": 128,
+              "width": 36,
+              "height": 36
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e14",
+            "backend_id": "0x7f8a1c002e00",
+            "role": "button",
+            "native_role": "push button",
+            "name": "Redo",
+            "states": {
+              "enabled": false,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 256,
+              "y": 128,
+              "width": 36,
+              "height": 36
+            },
+            "actions": ["click"],
+            "children": []
+          },
+          {
+            "ref": "e15",
+            "backend_id": "0x7f8a1c002f00",
+            "role": "button",
+            "native_role": "push button",
+            "name": "Find and Replace",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 304,
+              "y": 128,
+              "width": 36,
+              "height": 36
+            },
+            "actions": ["click"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "ref": "e16",
+        "backend_id": "0x7f8a1c003000",
+        "role": "pane",
+        "native_role": "panel",
+        "name": "",
+        "states": {
+          "enabled": true,
+          "visible": true
+        },
+        "bounds": {
+          "x": 100,
+          "y": 164,
+          "width": 900,
+          "height": 486
+        },
+        "actions": [],
+        "children": [
+          {
+            "ref": "e17",
+            "backend_id": "0x7f8a1c003100",
+            "role": "document",
+            "native_role": "document frame",
+            "name": "",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "read_only": false
+            },
+            "bounds": {
+              "x": 100,
+              "y": 164,
+              "width": 900,
+              "height": 486
+            },
+            "actions": ["type"],
+            "children": [
+              {
+                "ref": "e18",
+                "backend_id": "0x7f8a1c003200",
+                "role": "text_input",
+                "native_role": "entry",
+                "name": "",
+                "text": "",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "read_only": false,
+                  "focusable": true,
+                  "focused": true
+                },
+                "bounds": {
+                  "x": 100,
+                  "y": 164,
+                  "width": 900,
+                  "height": 486
+                },
+                "actions": ["type"],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ref": "e19",
+        "backend_id": "0x7f8a1c003300",
+        "role": "status_bar",
+        "native_role": "status bar",
+        "name": "",
+        "states": {
+          "enabled": true,
+          "visible": true
+        },
+        "bounds": {
+          "x": 100,
+          "y": 730,
+          "width": 900,
+          "height": 20
+        },
+        "actions": [],
+        "children": [
+          {
+            "ref": "e20",
+            "backend_id": "0x7f8a1c003400",
+            "role": "text",
+            "native_role": "label",
+            "name": "",
+            "text": "Ln 1, Col 1",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 100,
+              "y": 730,
+              "width": 120,
+              "height": 20
+            },
+            "actions": [],
+            "children": []
+          },
+          {
+            "ref": "e21",
+            "backend_id": "0x7f8a1c003500",
+            "role": "text",
+            "native_role": "label",
+            "name": "",
+            "text": "UTF-8",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 220,
+              "y": 730,
+              "width": 60,
+              "height": 20
+            },
+            "actions": [],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

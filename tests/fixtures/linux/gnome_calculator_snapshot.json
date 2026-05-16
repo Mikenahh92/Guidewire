@@ -1,0 +1,610 @@
+{
+  "_metadata": {
+    "captured_at": "2026-05-16T12:00:00Z",
+    "os_version": "Ubuntu 24.04 LTS (GNOME 46)",
+    "app_name": "gnome-calculator",
+    "guidewire_version": "0.1.0",
+    "max_depth": 4,
+    "max_nodes": 500
+  },
+  "snapshot": {
+    "ref": "e0",
+    "backend_id": "0x7f8a1c004000",
+    "role": "window",
+    "native_role": "window",
+    "name": "Calculator",
+    "states": {
+      "enabled": true,
+      "visible": true
+    },
+    "bounds": {
+      "x": 400,
+      "y": 200,
+      "width": 320,
+      "height": 480
+    },
+    "actions": [],
+    "children": [
+      {
+        "ref": "e1",
+        "backend_id": "0x7f8a1c004100",
+        "role": "pane",
+        "native_role": "panel",
+        "name": "",
+        "states": {
+          "enabled": true,
+          "visible": true
+        },
+        "bounds": {
+          "x": 400,
+          "y": 200,
+          "width": 320,
+          "height": 36
+        },
+        "actions": [],
+        "children": [
+          {
+            "ref": "e2",
+            "backend_id": "0x7f8a1c004200",
+            "role": "button",
+            "native_role": "push button",
+            "name": "Menu",
+            "states": {
+              "enabled": true,
+              "visible": true,
+              "focusable": true
+            },
+            "bounds": {
+              "x": 404,
+              "y": 204,
+              "width": 32,
+              "height": 28
+            },
+            "actions": ["click"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "ref": "e3",
+        "backend_id": "0x7f8a1c004300",
+        "role": "pane",
+        "native_role": "panel",
+        "name": "",
+        "states": {
+          "enabled": true,
+          "visible": true
+        },
+        "bounds": {
+          "x": 400,
+          "y": 236,
+          "width": 320,
+          "height": 444
+        },
+        "actions": [],
+        "children": [
+          {
+            "ref": "e4",
+            "backend_id": "0x7f8a1c004400",
+            "role": "pane",
+            "native_role": "panel",
+            "name": "Display",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 400,
+              "y": 236,
+              "width": 320,
+              "height": 120
+            },
+            "actions": [],
+            "children": [
+              {
+                "ref": "e5",
+                "backend_id": "0x7f8a1c004500",
+                "role": "text",
+                "native_role": "label",
+                "name": "",
+                "text": "0",
+                "states": {
+                  "enabled": true,
+                  "visible": true
+                },
+                "bounds": {
+                  "x": 416,
+                  "y": 296,
+                  "width": 288,
+                  "height": 48
+                },
+                "actions": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "ref": "e6",
+            "backend_id": "0x7f8a1c004600",
+            "role": "group",
+            "native_role": "grouping",
+            "name": "",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 400,
+              "y": 364,
+              "width": 320,
+              "height": 56
+            },
+            "actions": [],
+            "children": [
+              {
+                "ref": "e7",
+                "backend_id": "0x7f8a1c004700",
+                "role": "button",
+                "native_role": "push button",
+                "name": "Clear",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 404,
+                  "y": 368,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e8",
+                "backend_id": "0x7f8a1c004800",
+                "role": "button",
+                "native_role": "push button",
+                "name": "±",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 480,
+                  "y": 368,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e9",
+                "backend_id": "0x7f8a1c004900",
+                "role": "button",
+                "native_role": "push button",
+                "name": "%",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 556,
+                  "y": 368,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e10",
+                "backend_id": "0x7f8a1c004a00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "÷",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 632,
+                  "y": 368,
+                  "width": 80,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "ref": "e11",
+            "backend_id": "0x7f8a1c004b00",
+            "role": "group",
+            "native_role": "grouping",
+            "name": "",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 400,
+              "y": 424,
+              "width": 320,
+              "height": 56
+            },
+            "actions": [],
+            "children": [
+              {
+                "ref": "e12",
+                "backend_id": "0x7f8a1c004c00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "7",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 404,
+                  "y": 428,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e13",
+                "backend_id": "0x7f8a1c004d00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "8",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 480,
+                  "y": 428,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e14",
+                "backend_id": "0x7f8a1c004e00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "9",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 556,
+                  "y": 428,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e15",
+                "backend_id": "0x7f8a1c004f00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "×",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 632,
+                  "y": 428,
+                  "width": 80,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "ref": "e16",
+            "backend_id": "0x7f8a1c005000",
+            "role": "group",
+            "native_role": "grouping",
+            "name": "",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 400,
+              "y": 484,
+              "width": 320,
+              "height": 56
+            },
+            "actions": [],
+            "children": [
+              {
+                "ref": "e17",
+                "backend_id": "0x7f8a1c005100",
+                "role": "button",
+                "native_role": "push button",
+                "name": "4",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 404,
+                  "y": 488,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e18",
+                "backend_id": "0x7f8a1c005200",
+                "role": "button",
+                "native_role": "push button",
+                "name": "5",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 480,
+                  "y": 488,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e19",
+                "backend_id": "0x7f8a1c005300",
+                "role": "button",
+                "native_role": "push button",
+                "name": "6",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 556,
+                  "y": 488,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e20",
+                "backend_id": "0x7f8a1c005400",
+                "role": "button",
+                "native_role": "push button",
+                "name": "−",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 632,
+                  "y": 488,
+                  "width": 80,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "ref": "e21",
+            "backend_id": "0x7f8a1c005500",
+            "role": "group",
+            "native_role": "grouping",
+            "name": "",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 400,
+              "y": 544,
+              "width": 320,
+              "height": 56
+            },
+            "actions": [],
+            "children": [
+              {
+                "ref": "e22",
+                "backend_id": "0x7f8a1c005600",
+                "role": "button",
+                "native_role": "push button",
+                "name": "1",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 404,
+                  "y": 548,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e23",
+                "backend_id": "0x7f8a1c005700",
+                "role": "button",
+                "native_role": "push button",
+                "name": "2",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 480,
+                  "y": 548,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e24",
+                "backend_id": "0x7f8a1c005800",
+                "role": "button",
+                "native_role": "push button",
+                "name": "3",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 556,
+                  "y": 548,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e25",
+                "backend_id": "0x7f8a1c005900",
+                "role": "button",
+                "native_role": "push button",
+                "name": "+",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 632,
+                  "y": 548,
+                  "width": 80,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              }
+            ]
+          },
+          {
+            "ref": "e26",
+            "backend_id": "0x7f8a1c005a00",
+            "role": "group",
+            "native_role": "grouping",
+            "name": "",
+            "states": {
+              "enabled": true,
+              "visible": true
+            },
+            "bounds": {
+              "x": 400,
+              "y": 604,
+              "width": 320,
+              "height": 56
+            },
+            "actions": [],
+            "children": [
+              {
+                "ref": "e27",
+                "backend_id": "0x7f8a1c005b00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "0",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 404,
+                  "y": 608,
+                  "width": 148,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e28",
+                "backend_id": "0x7f8a1c005c00",
+                "role": "button",
+                "native_role": "push button",
+                "name": ".",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 556,
+                  "y": 608,
+                  "width": 72,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              },
+              {
+                "ref": "e29",
+                "backend_id": "0x7f8a1c005d00",
+                "role": "button",
+                "native_role": "push button",
+                "name": "=",
+                "states": {
+                  "enabled": true,
+                  "visible": true,
+                  "focusable": true
+                },
+                "bounds": {
+                  "x": 632,
+                  "y": 608,
+                  "width": 80,
+                  "height": 48
+                },
+                "actions": ["click"],
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,7 +1,8 @@
-"""Shared helpers for golden snapshot fixture tests (GW-026).
+"""Shared helpers for golden snapshot fixture tests (GW-026, GW-035).
 
 Provides utilities for loading golden snapshot JSON files from the
-``tests/fixtures/windows/`` directory and comparing snapshot structures.
+``tests/fixtures/windows/`` and ``tests/fixtures/linux/`` directories
+and comparing snapshot structures.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 FIXTURES_DIR = Path(__file__).parent / "windows"
+LINUX_FIXTURES_DIR = Path(__file__).parent / "linux"
 
 
 def load_golden_snapshot(name: str) -> dict[str, Any]:
@@ -65,9 +67,7 @@ def _compare_nodes(
         actual_val = actual.get(field)
         expected_val = expected.get(field)
         if actual_val != expected_val:
-            differences.append(
-                f"{path}.{field}: expected {expected_val!r}, got {actual_val!r}"
-            )
+            differences.append(f"{path}.{field}: expected {expected_val!r}, got {actual_val!r}")
 
     # Compare bounds
     _compare_bounds(actual.get("bounds"), expected.get("bounds"), path, differences)
@@ -115,8 +115,7 @@ def _compare_bounds(
     for key in ("x", "y", "width", "height"):
         if actual.get(key) != expected.get(key):
             differences.append(
-                f"{path}.bounds.{key}: expected {expected.get(key)!r}, "
-                f"got {actual.get(key)!r}"
+                f"{path}.bounds.{key}: expected {expected.get(key)!r}, got {actual.get(key)!r}"
             )
 
 
@@ -136,3 +135,144 @@ def _compare_patterns(
             differences.append(f"{path}.patterns: missing {sorted(missing)}")
         if extra:
             differences.append(f"{path}.patterns: extra {sorted(extra)}")
+
+
+# ---------------------------------------------------------------------------
+# Linux normalized snapshot helpers (GW-035)
+# ---------------------------------------------------------------------------
+
+
+def load_linux_golden_snapshot(name: str) -> dict[str, Any]:
+    """Load a Linux golden snapshot JSON file by filename.
+
+    Args:
+        name: Fixture filename, e.g. ``"gedit_snapshot.json"``.
+
+    Returns:
+        The full fixture dict including ``_metadata`` and ``snapshot`` keys.
+
+    Raises:
+        FileNotFoundError: If the fixture file does not exist.
+        json.JSONDecodeError: If the file is not valid JSON.
+    """
+    path = LINUX_FIXTURES_DIR / name
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def compare_linux_snapshots(
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+) -> list[str]:
+    """Compare two normalized (Linux/NormalizedElement) snapshot tree dicts.
+
+    Recursively walks both trees and checks structural and value
+    equality for normalized element fields (role, name, states, actions,
+    bounds, children). Returns a list of difference descriptions
+    (empty if the trees match).
+
+    Args:
+        actual: The snapshot tree to validate.
+        expected: The reference golden snapshot tree.
+
+    Returns:
+        A list of human-readable difference strings.
+    """
+    differences: list[str] = []
+    _compare_linux_nodes(actual, expected, path="root", differences=differences)
+    return differences
+
+
+def _compare_linux_nodes(
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+    path: str,
+    differences: list[str],
+) -> None:
+    """Recursively compare two normalized snapshot nodes."""
+    # Compare normalized fields
+    for field in ("role", "name", "value", "text"):
+        actual_val = actual.get(field)
+        expected_val = expected.get(field)
+        if actual_val != expected_val:
+            differences.append(f"{path}.{field}: expected {expected_val!r}, got {actual_val!r}")
+
+    # Compare native_role (optional)
+    if actual.get("native_role") != expected.get("native_role"):
+        differences.append(
+            f"{path}.native_role: expected {expected.get('native_role')!r}, "
+            f"got {actual.get('native_role')!r}"
+        )
+
+    # Compare states dict
+    _compare_states(
+        actual.get("states", {}),
+        expected.get("states", {}),
+        path,
+        differences,
+    )
+
+    # Compare bounds
+    _compare_bounds(actual.get("bounds"), expected.get("bounds"), path, differences)
+
+    # Compare actions
+    _compare_actions(
+        actual.get("actions", []),
+        expected.get("actions", []),
+        path,
+        differences,
+    )
+
+    # Compare children count and recurse
+    actual_children = actual.get("children", [])
+    expected_children = expected.get("children", [])
+    if len(actual_children) != len(expected_children):
+        differences.append(
+            f"{path}.children: expected {len(expected_children)} children, "
+            f"got {len(actual_children)}"
+        )
+        return
+
+    for i, (ac, ec) in enumerate(
+        zip(actual_children, expected_children, strict=True),
+    ):
+        child_name = ac.get("name", ac.get("role", i))
+        _compare_linux_nodes(
+            ac, ec, path=f"{path}.children[{i}]({child_name})", differences=differences
+        )
+
+
+def _compare_states(
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+    path: str,
+    differences: list[str],
+) -> None:
+    """Compare normalized states dicts."""
+    actual_set = set(actual.items())
+    expected_set = set(expected.items())
+    if actual_set != expected_set:
+        missing = expected_set - actual_set
+        extra = actual_set - expected_set
+        if missing:
+            differences.append(f"{path}.states: missing {sorted(missing)}")
+        if extra:
+            differences.append(f"{path}.states: extra {sorted(extra)}")
+
+
+def _compare_actions(
+    actual: list[str],
+    expected: list[str],
+    path: str,
+    differences: list[str],
+) -> None:
+    """Compare normalized action lists."""
+    actual_set = set(actual)
+    expected_set = set(expected)
+    if actual_set != expected_set:
+        missing = expected_set - actual_set
+        extra = actual_set - expected_set
+        if missing:
+            differences.append(f"{path}.actions: missing {sorted(missing)}")
+        if extra:
+            differences.append(f"{path}.actions: extra {sorted(extra)}")
