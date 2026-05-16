@@ -9,7 +9,8 @@ Implementation status:
 - ``list_windows`` — implemented (GW-020)
 - ``get_window_info``, ``focus_window`` — pending (GW-021)
 - ``snapshot``, ``find_elements`` — pending (GW-022)
-- ``perform_action``, ``get_element_info``, ``is_valid`` — pending (GW-023)
+- ``perform_action``, ``get_element_info`` — pending (GW-023)
+- ``is_valid`` — implemented (GW-024)
 """
 
 import sys
@@ -29,6 +30,7 @@ _UIA_TREE_SCOPE_CHILDREN = 2  # UIA TreeScope_Children
 _UIA_CONTROL_TYPE_PROPERTY_ID = 30003  # UIA_PropertyId_UIA_ControlTypePropertyId
 _UIA_WINDOW_CONTROL_TYPE_ID = 50032  # UIA_ControlType_Window (0xC370)
 _UIA_IS_OFFSCREEN_PROPERTY_ID = 30022  # UIA_PropertyId_UIA_IsOffscreenPropertyId
+_UIA_PROCESS_ID_PROPERTY_ID = 30076  # UIA_PropertyId_UIA_ProcessIdPropertyId
 
 
 class WindowsBackend(DesktopBackend):
@@ -326,16 +328,44 @@ class WindowsBackend(DesktopBackend):
     def is_valid(self, element: NativeHandle) -> bool:
         """Check whether a native element reference is still valid.
 
-        .. todo:: Query the UIA element to confirm it still exists via
-           ``IUIAutomation.ElementFromHandle`` or cached reference check.
+        Uses a lightweight property-access probe on the underlying COM
+        ``IUIAutomationElement`` to detect stale handles.  For HWND-integer
+        handles (produced by ``focus_window``), delegates to the Win32
+        ``IsWindow`` API via ``ctypes``.
+
+        This method must **never** raise — the tool layer calls it outside
+        any ``try / except`` block, so any exception would propagate as an
+        unhandled MCP error.
 
         Args:
-            element: Opaque native element handle.
+            element: Opaque native element handle.  May be a COM
+                ``IUIAutomationElement`` pointer (from ``list_windows`` /
+                ``find_elements``) or a bare HWND ``int`` (from
+                ``focus_window``).
 
         Returns:
-            ``True`` if the element still exists in the accessibility tree.
+            ``True`` if the element still exists in the accessibility tree,
+            ``False`` otherwise (including when the backend is disposed).
         """
-        raise NotImplementedError("is_valid not yet implemented — see GW-023")
+        if self._disposed:
+            return False
+
+        # HWND integer handles — use Win32 IsWindow API.
+        if isinstance(element, int):
+            try:
+                import ctypes
+
+                user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+                return bool(user32.IsWindow(element))  # type: ignore[attr-defined]
+            except Exception:
+                return False
+
+        # COM IUIAutomationElement — probe with a cheap property read.
+        try:
+            element.GetCurrentPropertyValue(_UIA_PROCESS_ID_PROPERTY_ID)
+            return True
+        except Exception:
+            return False
 
     def dispose(self) -> None:
         """Release all resources held by this backend.

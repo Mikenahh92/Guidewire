@@ -8,7 +8,7 @@ Validates:
 - list_windows() enumerates visible top-level windows via UIA COM.
 - Off-screen windows are filtered out.
 - COM errors are translated to BackendUnavailableError.
-- Remaining 8 abstract methods raise NotImplementedError (pending stories).
+- is_valid() detects stale COM element handles via property access (GW-024).
 - dispose() performs full COM cleanup and is idempotent.
 - Constructor signature matches DesktopBackend contract.
 
@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from guidewire.backends.base import DesktopBackend
+from guidewire.backends.types import NativeHandle
 from guidewire.backends.windows import WindowsBackend
 from guidewire.errors import BackendUnavailableError
 
@@ -247,11 +248,16 @@ class TestStubMethods:
         with pytest.raises(NotImplementedError, match="get_element_info"):
             backend.get_element_info(NativeHandle("fake"))
 
-    def test_is_valid_raises_not_implemented(self, backend: WindowsBackend) -> None:
+    def test_is_valid_no_longer_raises_not_implemented(
+        self, backend: WindowsBackend
+    ) -> None:
+        """is_valid is implemented (GW-024) — must not raise NotImplementedError."""
         from guidewire.backends.types import NativeHandle
 
-        with pytest.raises(NotImplementedError, match="is_valid"):
-            backend.is_valid(NativeHandle("fake"))
+        # COM element: property access succeeds → True
+        mock_element = MagicMock()
+        backend.is_valid(NativeHandle(mock_element))  # type: ignore[arg-type]
+        # No assertion needed — just verifying it doesn't raise NotImplementedError
 
     def test_dispose_sets_disposed_flag(self, backend: WindowsBackend) -> None:
         """dispose() must set _disposed to True without raising."""
@@ -471,3 +477,152 @@ class TestListWindowsP1:
             ("_UIA_IS_OFFSCREEN_PROPERTY_ID", _UIA_IS_OFFSCREEN_PROPERTY_ID),
         ]:
             assert isinstance(val, int), f"{name} must be int, got {type(val).__name__}"
+
+
+# ---------------------------------------------------------------------------
+# is_valid tests (GW-024)
+# ---------------------------------------------------------------------------
+
+
+class TestIsValid:
+    """Tests for WindowsBackend.is_valid (GW-024).
+
+    Validates:
+    - Disposed backend returns False (never raises).
+    - COM IUIAutomationElement handles: property probe success → True.
+    - COM IUIAutomationElement handles: property probe failure → False.
+    - HWND integer handles: IsWindow returns nonzero → True.
+    - HWND integer handles: IsWindow returns zero → False.
+    - COM errors are caught and return False (never propagate).
+    - ctypes errors are caught and return False.
+    - Unknown handle types (e.g. string) → COM probe attempt → False.
+    """
+
+    @pytest.fixture()
+    def backend(self) -> WindowsBackend:
+        """Create a WindowsBackend bypassing the platform guard."""
+        with (
+            patch("sys.platform", "win32"),
+            patch.dict("sys.modules", {"comtypes": type("mod", (), {})}),
+        ):
+            b = WindowsBackend.__new__(WindowsBackend)
+            b._com_initialized = True
+            b._uia = MagicMock()
+            b._disposed = False
+            return b
+
+    # -- Disposed backend ---------------------------------------------------
+
+    def test_disposed_returns_false(self, backend: WindowsBackend) -> None:
+        """A disposed backend must return False, never raise."""
+        backend.dispose()
+        assert backend.is_valid(NativeHandle(MagicMock())) is False
+
+    # -- COM IUIAutomationElement handles ------------------------------------
+
+    def test_com_element_valid_returns_true(
+        self, backend: WindowsBackend
+    ) -> None:
+        """A live COM element (property probe succeeds) → True."""
+        mock_element = MagicMock()
+        mock_element.GetCurrentPropertyValue.return_value = 1234
+
+        assert backend.is_valid(NativeHandle(mock_element)) is True  # type: ignore[arg-type]
+        mock_element.GetCurrentPropertyValue.assert_called_once()
+
+    def test_com_element_stale_returns_false(
+        self, backend: WindowsBackend
+    ) -> None:
+        """A stale COM element (property probe raises) → False."""
+        mock_element = MagicMock()
+        mock_element.GetCurrentPropertyValue.side_effect = OSError(
+            "COM object has been separated from its underlying RCW"
+        )
+
+        assert backend.is_valid(NativeHandle(mock_element)) is False  # type: ignore[arg-type]
+
+    def test_com_element_process_id_constant_used(
+        self, backend: WindowsBackend
+    ) -> None:
+        """is_valid must probe with UIA_ProcessIdPropertyId (30076)."""
+        from guidewire.backends.windows import _UIA_PROCESS_ID_PROPERTY_ID
+
+        assert _UIA_PROCESS_ID_PROPERTY_ID == 30076
+
+        mock_element = MagicMock()
+        backend.is_valid(NativeHandle(mock_element))  # type: ignore[arg-type]
+
+        mock_element.GetCurrentPropertyValue.assert_called_once_with(30076)
+
+    def test_com_element_generic_exception_returns_false(
+        self, backend: WindowsBackend
+    ) -> None:
+        """Any exception from COM property access → False."""
+        mock_element = MagicMock()
+        mock_element.GetCurrentPropertyValue.side_effect = RuntimeError("unexpected")
+
+        assert backend.is_valid(NativeHandle(mock_element)) is False  # type: ignore[arg-type]
+
+    # -- HWND integer handles ------------------------------------------------
+
+    def test_hwnd_valid_returns_true(self, backend: WindowsBackend) -> None:
+        """HWND with IsWindow returning nonzero → True."""
+        import ctypes
+
+        with patch.object(ctypes.windll.user32, "IsWindow", return_value=1):
+            assert backend.is_valid(NativeHandle(12345)) is True  # type: ignore[arg-type]
+
+    def test_hwnd_invalid_returns_false(self, backend: WindowsBackend) -> None:
+        """HWND with IsWindow returning zero → False."""
+        import ctypes
+
+        with patch.object(ctypes.windll.user32, "IsWindow", return_value=0):
+            assert backend.is_valid(NativeHandle(99999)) is False  # type: ignore[arg-type]
+
+    def test_hwnd_zero_returns_false(self, backend: WindowsBackend) -> None:
+        """HWND 0x0 → IsWindow returns 0 → False."""
+        import ctypes
+
+        with patch.object(ctypes.windll.user32, "IsWindow", return_value=0):
+            assert backend.is_valid(NativeHandle(0)) is False  # type: ignore[arg-type]
+
+    def test_hwnd_ctypes_error_returns_false(
+        self, backend: WindowsBackend
+    ) -> None:
+        """ctypes failure during IsWindow → False."""
+        import ctypes
+
+        with patch.object(
+            ctypes.windll.user32, "IsWindow", side_effect=OSError("ctypes error")
+        ):
+            assert backend.is_valid(NativeHandle(12345)) is False  # type: ignore[arg-type]
+
+    # -- Edge cases ----------------------------------------------------------
+
+    def test_unknown_handle_type_returns_false(
+        self, backend: WindowsBackend
+    ) -> None:
+        """A non-int, non-COM handle (e.g. string) → property probe fails → False."""
+        # A string doesn't have GetCurrentPropertyValue, so the COM probe
+        # will raise AttributeError → caught → False.
+        assert backend.is_valid(NativeHandle("not_a_handle")) is False  # type: ignore[arg-type]
+
+    def test_none_handle_returns_false(self, backend: WindowsBackend) -> None:
+        """None handle → COM probe fails → False."""
+        assert backend.is_valid(NativeHandle(None)) is False  # type: ignore[arg-type]
+
+    def test_never_raises_for_any_input(self, backend: WindowsBackend) -> None:
+        """is_valid must never raise, regardless of input."""
+        for value in [None, "bad", 0, -1, object(), MagicMock()]:
+            try:
+                result = backend.is_valid(NativeHandle(value))  # type: ignore[arg-type]
+                assert isinstance(result, bool)
+            except Exception as exc:
+                pytest.fail(f"is_valid raised {type(exc).__name__} for {value!r}")
+
+    def test_process_id_constant_is_immutable_integer(self) -> None:
+        """_UIA_PROCESS_ID_PROPERTY_ID must be a plain integer."""
+        from guidewire.backends.windows import _UIA_PROCESS_ID_PROPERTY_ID
+
+        assert isinstance(_UIA_PROCESS_ID_PROPERTY_ID, int)
+        assert _UIA_PROCESS_ID_PROPERTY_ID == 30076
