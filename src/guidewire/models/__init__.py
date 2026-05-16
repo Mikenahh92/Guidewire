@@ -232,10 +232,14 @@ class NormalizedElement:
                 "width": self.bounds.width,
                 "height": self.bounds.height,
             }
+        else:
+            result["bounds"] = None
         result["actions"] = list(self.actions)
         children = self.children
         if children:
             result["children"] = [c.to_dict() for c in children]
+        else:
+            result["children"] = []
         return result
 
 

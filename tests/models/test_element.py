@@ -312,7 +312,8 @@ class TestNormalizedElement:
         assert d["role"] == "custom"
         assert "native_role" not in d
         assert "name" not in d
-        assert "children" not in d
+        assert d["children"] == []
+        assert d["bounds"] is None
         assert d["states"] == {}
         assert d["actions"] == []
 

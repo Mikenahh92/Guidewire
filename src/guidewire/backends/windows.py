@@ -23,6 +23,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from guidewire.backends.base import DesktopBackend
+from guidewire.backends.normalize import (
+    normalize_element,
+    normalize_states,
+)
 from guidewire.backends.types import DesktopAction, NativeHandle
 from guidewire.errors import (
     ActionNotSupportedError,
@@ -31,7 +35,8 @@ from guidewire.errors import (
     StaleElementReferenceError,
     WindowNotFoundError,
 )
-from guidewire.models.mappings import resolve_action, resolve_role, resolve_state
+from guidewire.models import NormalizedElement
+from guidewire.models.mappings import resolve_role, resolve_state
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +76,7 @@ class _ComHandle:
             return True
         except Exception:
             return False
+
 
 # UIA property IDs used by get_element_info
 _UIA_NAME_PROPERTY_ID = 30005  # UIA_PropertyId_UIA_NamePropertyId
@@ -385,15 +391,16 @@ class WindowsBackend(DesktopBackend):
         """
         return self._uia.ControlViewWalker
 
-    def _extract_element_node(self, element: Any) -> dict[str, Any]:
+    def _extract_element_node(self, element: Any) -> NormalizedElement:
         """Extract properties from a single ``IUIAutomationElement``.
 
         Reads ControlType, Name, Value, IsEnabled, bounding rectangle,
-        and supported patterns, then normalizes via mapping tables.
+        and supported patterns, then normalizes via
+        :func:`~guidewire.backends.normalize.normalize_element`.
 
         Returns:
-            A flat dict with keys matching the DesktopElement schema
-            (excluding ``children``).
+            A :class:`~guidewire.models.NormalizedElement` with all fields
+            populated from the COM element.
         """
         # --- ControlType / role ---
         try:
@@ -402,7 +409,6 @@ class WindowsBackend(DesktopBackend):
             control_type_id = 0
 
         control_type_name = _control_type_id_to_name(control_type_id)
-        normalized_role = resolve_role("windows", control_type_name) or control_type_name
 
         # --- Name ---
         try:
@@ -419,22 +425,22 @@ class WindowsBackend(DesktopBackend):
         except Exception:
             pass
 
-        # --- States ---
-        states: dict[str, Any] = {}
-        _read_state(element, "IsEnabled", "CurrentIsEnabled", bool, states)
-        _read_state(element, "HasKeyboardFocus", "CurrentHasKeyboardFocus", bool, states)
-        _read_state(element, "IsSelected", "CurrentIsSelected", bool, states)
-        _read_state(element, "IsOffscreen", "CurrentIsOffscreen", bool, states)
-        _read_state(element, "IsReadOnly", "CurrentIsReadOnly", bool, states)
-        _read_state(element, "IsRequiredForForm", "CurrentIsRequiredForForm", bool, states)
-        _read_state(element, "IsPassword", "CurrentIsPassword", bool, states)
+        # --- Collect raw states ---
+        raw_states: dict[str, Any] = {}
+        _read_state(element, "IsEnabled", "CurrentIsEnabled", bool, raw_states)
+        _read_state(element, "HasKeyboardFocus", "CurrentHasKeyboardFocus", bool, raw_states)
+        _read_state(element, "IsSelected", "CurrentIsSelected", bool, raw_states)
+        _read_state(element, "IsOffscreen", "CurrentIsOffscreen", bool, raw_states)
+        _read_state(element, "IsReadOnly", "CurrentIsReadOnly", bool, raw_states)
+        _read_state(element, "IsRequiredForForm", "CurrentIsRequiredForForm", bool, raw_states)
+        _read_state(element, "IsPassword", "CurrentIsPassword", bool, raw_states)
 
         # ToggleState needs special handling (integer enum)
         try:
             toggle_state = element.CurrentToggleState
             resolved = resolve_state("windows", "ToggleState", toggle_state)
             if resolved:
-                states[resolved[0]] = resolved[1]
+                raw_states[resolved[0]] = resolved[1]
         except Exception:
             pass
 
@@ -443,7 +449,7 @@ class WindowsBackend(DesktopBackend):
             expanded = element.CurrentIsExpanded
             resolved = resolve_state("windows", "IsExpanded", expanded)
             if resolved:
-                states[resolved[0]] = resolved[1]
+                raw_states[resolved[0]] = resolved[1]
         except Exception:
             pass
 
@@ -452,47 +458,42 @@ class WindowsBackend(DesktopBackend):
             visibility = element.CurrentVisibility
             resolved = resolve_state("windows", "Visibility", visibility)
             if resolved:
-                states[resolved[0]] = resolved[1]
+                raw_states[resolved[0]] = resolved[1]
         except Exception:
             pass
 
-        # --- Bounds ---
-        bounds: dict[str, Any] | None = None
+        # --- Bounds (raw tuple for normalizer) ---
+        raw_bounds: tuple[int, int, int, int] | None = None
         try:
             rect = element.CurrentBoundingRectangle
             if rect:
-                # rect is a tuple (left, top, width, height)
-                bounds = {
-                    "x": int(rect.left),
-                    "y": int(rect.top),
-                    "width": int(rect.width),
-                    "height": int(rect.height),
-                }
+                raw_bounds = (int(rect.left), int(rect.top), int(rect.width), int(rect.height))
         except Exception:
             pass
 
-        # --- Actions (pattern availability) ---
-        actions: list[str] = []
+        # --- Collect raw action patterns ---
+        raw_actions: list[str] = []
         for pattern_id, pattern_name in _UIA_PATTERN_MAP:
             try:
                 pattern = element.GetCurrentPattern(pattern_id)
                 if pattern is not None:
-                    action = resolve_action("windows", pattern_name)
-                    if action and action not in actions:
-                        actions.append(action)
+                    raw_actions.append(pattern_name)
             except Exception:
                 pass
 
-        return {
-            "ref": _ComHandle(element, self._uia),
-            "role": normalized_role,
-            "name": name,
-            "value": value,
-            "states": states,
-            "bounds": bounds,
-            "actions": actions,
-            "children": [],
-        }
+        return normalize_element(
+            platform="windows",
+            ref=str(id(element)),
+            backend_id=str(control_type_id),
+            role=control_type_name,
+            native_role=control_type_name,
+            control_type=control_type_name,
+            name=name,
+            value=value,
+            raw_states=raw_states,
+            bounds=raw_bounds,
+            raw_actions=raw_actions,
+        )
 
     def _walk_tree(
         self,
@@ -518,17 +519,13 @@ class WindowsBackend(DesktopBackend):
         node = self._walk_recursive(root_element, walker, 0, max_depth, counter, max_nodes)
         if node is None:
             # Root should never be None; return a minimal node as fallback
-            return {
-                "ref": _ComHandle(root_element, self._uia),
-                "role": "unknown",
-                "name": None,
-                "value": None,
-                "states": {},
-                "bounds": None,
-                "actions": [],
-                "children": [],
-            }
-        return node
+            fallback = NormalizedElement(
+                ref=str(id(root_element)),
+                backend_id="0",
+                role="unknown",
+            )
+            return fallback.to_dict()
+        return node.to_dict()
 
     def _walk_recursive(
         self,
@@ -538,8 +535,8 @@ class WindowsBackend(DesktopBackend):
         max_depth: int,
         counter: list[int],
         max_nodes: int,
-    ) -> dict[str, Any] | None:
-        """Recursively walk from *element* building the tree dict.
+    ) -> NormalizedElement | None:
+        """Recursively walk from *element* building a NormalizedElement tree.
 
         Returns ``None`` for offscreen descendant elements (depth > 0),
         which the caller filters out of the children list.  The root
@@ -548,18 +545,22 @@ class WindowsBackend(DesktopBackend):
         offscreen nodes).
         """
         if counter[0] >= max_nodes:
-            return {"ref": _ComHandle(element, self._uia), "role": "unknown", "children": []}
+            return NormalizedElement(
+                ref=str(id(element)),
+                backend_id="0",
+                role="unknown",
+            )
 
         counter[0] += 1
         node = self._extract_element_node(element)
 
         # Exclude offscreen descendants (but never the root at depth 0)
-        if depth > 0 and node.get("states", {}).get("offscreen") is True:
+        if depth > 0 and node.states.offscreen is True:
             counter[0] -= 1
             return None
 
         if depth < max_depth:
-            children: list[dict[str, Any]] = []
+            children: list[NormalizedElement] = []
             try:
                 child = walker.GetFirstChildElement(element)
                 while child is not None:
@@ -574,7 +575,7 @@ class WindowsBackend(DesktopBackend):
                     child = next_child
             except Exception:
                 logger.debug("Error walking children at depth %d", depth, exc_info=True)
-            node["children"] = children
+            node.children = children
 
         return node
 
@@ -1225,45 +1226,41 @@ class WindowsBackend(DesktopBackend):
             # Read name
             name = element.GetCurrentPropertyValue(_UIA_NAME_PROPERTY_ID)
 
-            # Read states
-            states: dict[str, Any] = {}
-            states["enabled"] = bool(element.GetCurrentPropertyValue(_UIA_IS_ENABLED_PROPERTY_ID))
-            states["focused"] = bool(
-                element.GetCurrentPropertyValue(_UIA_HAS_KEYBOARD_FOCUS_PROPERTY_ID)
+            # Read states via normalize_states for consistency
+            raw_states: dict[str, Any] = {}
+            raw_states["IsEnabled"] = element.GetCurrentPropertyValue(_UIA_IS_ENABLED_PROPERTY_ID)
+            raw_states["HasKeyboardFocus"] = element.GetCurrentPropertyValue(
+                _UIA_HAS_KEYBOARD_FOCUS_PROPERTY_ID
             )
-            states["selected"] = bool(element.GetCurrentPropertyValue(_UIA_IS_SELECTED_PROPERTY_ID))
+            raw_states["IsSelected"] = element.GetCurrentPropertyValue(_UIA_IS_SELECTED_PROPERTY_ID)
+            raw_states["ToggleState"] = element.GetCurrentPropertyValue(
+                _UIA_TOGGLE_STATE_PROPERTY_ID
+            )
+            raw_states["IsExpanded"] = element.GetCurrentPropertyValue(_UIA_IS_EXPANDED_PROPERTY_ID)
+            raw_states["IsReadOnly"] = element.GetCurrentPropertyValue(
+                _UIA_IS_READ_ONLY_PROPERTY_ID
+            )
+            raw_states["IsRequiredForForm"] = element.GetCurrentPropertyValue(
+                _UIA_IS_REQUIRED_FOR_FORM_PROPERTY_ID
+            )
+            raw_states["IsPassword"] = element.GetCurrentPropertyValue(_UIA_IS_PASSWORD_PROPERTY_ID)
+            raw_states["IsOffscreen"] = element.GetCurrentPropertyValue(
+                _UIA_IS_OFFSCREEN_PROPERTY_ID
+            )
 
-            # ToggleState: 0=Off, 1=On, 2=Indeterminate
-            toggle_state = element.GetCurrentPropertyValue(_UIA_TOGGLE_STATE_PROPERTY_ID)
-            if toggle_state == 1:
-                states["checked"] = True
-            elif toggle_state == 2:
-                states["checked"] = "mixed"
-            else:
-                states["checked"] = False
+            norm_states = normalize_states("windows", raw_states)
+            from dataclasses import fields as _dc_fields
 
-            # ExpandCollapseState: 0=Collapsed, 1=Expanded, 2=PartiallyExpanded,
-            # 3=LeafNode
-            expand_state = element.GetCurrentPropertyValue(_UIA_IS_EXPANDED_PROPERTY_ID)
-            states["expanded"] = int(expand_state) in (1, 2)
-
-            states["read_only"] = bool(
-                element.GetCurrentPropertyValue(_UIA_IS_READ_ONLY_PROPERTY_ID)
-            )
-            states["required"] = bool(
-                element.GetCurrentPropertyValue(_UIA_IS_REQUIRED_FOR_FORM_PROPERTY_ID)
-            )
-            states["is_password"] = bool(
-                element.GetCurrentPropertyValue(_UIA_IS_PASSWORD_PROPERTY_ID)
-            )
-            states["offscreen"] = bool(
-                element.GetCurrentPropertyValue(_UIA_IS_OFFSCREEN_PROPERTY_ID)
-            )
+            states_dict = {
+                f.name: getattr(norm_states, f.name)
+                for f in _dc_fields(norm_states)
+                if getattr(norm_states, f.name) is not None
+            }
 
             return {
                 "role": role,
                 "name": str(name) if name else None,
-                "states": states,
+                "states": states_dict,
             }
         except ElementNotFoundError:
             raise

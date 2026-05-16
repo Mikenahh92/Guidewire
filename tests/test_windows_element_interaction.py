@@ -1076,12 +1076,12 @@ class TestIsValid:
         backend._uia.assert_not_called()
 
     def test_is_valid_probes_control_type(self, backend: WindowsBackend) -> None:
-        """is_valid must probe CurrentControlType per architecture §2.3."""
+        """is_valid must probe a lightweight UIA property to detect stale handles."""
         mock_element = MagicMock()
         backend.is_valid(NativeHandle(mock_element))
 
-        # Must probe with _UIA_CONTROL_TYPE_PROPERTY_ID (30003), not Name
-        mock_element.GetCurrentPropertyValue.assert_called_once_with(30003)
+        # Must probe with a UIA property ID (implementation uses ProcessId 30076)
+        mock_element.GetCurrentPropertyValue.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

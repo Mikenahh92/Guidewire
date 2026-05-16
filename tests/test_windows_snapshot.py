@@ -233,7 +233,7 @@ class TestSnapshotTreeWalking:
         assert result["name"] == "Main Window"
         assert result["children"] == []
         assert result["ref"] is not None
-        assert isinstance(result["ref"], _ComHandle)
+        assert isinstance(result["ref"], str)
         assert "states" in result
         assert "bounds" in result
         assert "actions" in result
