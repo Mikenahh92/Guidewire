@@ -23,7 +23,7 @@ Implementation status:
 - ``find_elements`` — implemented (GW-032)
 - ``perform_action`` — implemented (GW-032)
 - ``get_element_info`` — implemented (GW-032)
-- ``is_valid`` — implemented (GW-032)
+- ``is_valid`` — implemented (GW-033)
 """
 
 import contextlib
@@ -719,14 +719,10 @@ class LinuxBackend(DesktopBackend):
         try:
             action_interface = accessible.queryAction()
         except Exception:
-            raise ActionNotSupportedError(
-                "Element does not support the Action interface"
-            ) from None
+            raise ActionNotSupportedError("Element does not support the Action interface") from None
 
         if action_interface is None:
-            raise ActionNotSupportedError(
-                "Element does not support the Action interface"
-            )
+            raise ActionNotSupportedError("Element does not support the Action interface")
 
         # Check if the named action exists
         n_actions = action_interface.get_n_actions()
@@ -737,9 +733,7 @@ class LinuxBackend(DesktopBackend):
             except Exception:
                 continue
 
-        raise ActionNotSupportedError(
-            f"Element does not support the '{action_name}' action"
-        )
+        raise ActionNotSupportedError(f"Element does not support the '{action_name}' action")
 
     def _do_action_by_name(self, accessible: Any, action_name: str) -> None:
         """Execute an AT-SPI action by name.
@@ -774,9 +768,7 @@ class LinuxBackend(DesktopBackend):
         try:
             accessible.queryAction()
         except Exception:
-            raise ActionNotSupportedError(
-                "Element does not support the Action interface"
-            ) from None
+            raise ActionNotSupportedError("Element does not support the Action interface") from None
 
         for action_name in ("click", "press", "activate"):
             try:
@@ -900,9 +892,7 @@ class LinuxBackend(DesktopBackend):
                 return
             except ActionNotSupportedError:
                 continue
-        raise ActionNotSupportedError(
-            "Element does not support any scroll action"
-        )
+        raise ActionNotSupportedError("Element does not support any scroll action")
 
     def _action_get_text(self, accessible: Any) -> str:
         """Get the text value of an element.
@@ -1169,10 +1159,13 @@ class LinuxBackend(DesktopBackend):
             raise ElementNotFoundError(f"Failed to read element info: {exc}") from exc
 
     def is_valid(self, element: NativeHandle) -> bool:
-        """Check whether a native element reference is still valid (GW-032).
+        """Check whether a native element reference is still valid (GW-033).
 
         Uses a lightweight ``getState`` probe on the underlying
-        ``pyatspi.Accessible`` to detect stale handles.
+        ``pyatspi.Accessible`` to detect stale handles.  When the
+        underlying AT-SPI object has been destroyed, any D-Bus property
+        access raises, which this method catches and translates to
+        ``False``.
 
         This method must **never** raise — the tool layer calls it outside
         any ``try / except`` block, so any exception would propagate as an

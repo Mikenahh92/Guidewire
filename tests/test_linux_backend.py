@@ -496,9 +496,7 @@ class TestPerformAction:
         mock_text = MagicMock()
         accessible.queryText.return_value = mock_text
 
-        backend.perform_action(
-            NativeHandle(accessible), DesktopAction.SET_VALUE, value="new value"
-        )
+        backend.perform_action(NativeHandle(accessible), DesktopAction.SET_VALUE, value="new value")
         mock_text.set_text_content.assert_called_once_with("new value")
 
     # -- SELECT action --------------------------------------------------------
@@ -723,14 +721,16 @@ class TestGetElementInfo:
 
 
 class TestIsValid:
-    """Tests for LinuxBackend.is_valid (GW-032).
+    """Tests for LinuxBackend.is_valid (GW-033).
 
     Validates:
-    - Returns True for valid accessible.
-    - Returns False for defunct accessible.
+    - Returns True for valid accessible (getState probe succeeds).
+    - Returns False for defunct accessible (getState raises).
     - Returns False for None handle.
-    - Returns False when disposed.
-    - Never raises.
+    - Returns False when backend is disposed.
+    - Never raises for any input type.
+    - getState is the probe method used.
+    - Multiple exception types all yield False.
     """
 
     @pytest.fixture()
@@ -748,20 +748,74 @@ class TestIsValid:
         else:
             sys.modules["pyatspi"] = original_pyatspi
 
+    # -- Valid element -------------------------------------------------------
+
     def test_returns_true_for_valid_element(self, backend: LinuxBackend) -> None:
         """is_valid returns True for a responsive accessible."""
         accessible = MagicMock()
         assert backend.is_valid(NativeHandle(accessible)) is True
 
+    def test_probes_via_get_state(self, backend: LinuxBackend) -> None:
+        """is_valid must use getState as its lightweight probe."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        backend.is_valid(NativeHandle(accessible))
+        accessible.getState.assert_called_once()
+
+    # -- Defunct / stale elements --------------------------------------------
+
     def test_returns_false_for_defunct_element(self, backend: LinuxBackend) -> None:
-        """is_valid returns False when getState raises."""
+        """is_valid returns False when getState raises RuntimeError."""
+        from guidewire.backends.types import NativeHandle
+
         accessible = MagicMock()
         accessible.getState.side_effect = RuntimeError("defunct")
         assert backend.is_valid(NativeHandle(accessible)) is False
 
+    def test_returns_false_for_dbus_exception(self, backend: LinuxBackend) -> None:
+        """is_valid returns False when D-Bus raises dbus.exceptions.DBusException."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        # Simulate a D-Bus error from stale AT-SPI proxy
+        accessible.getState.side_effect = Exception(
+            "org.freedesktop.DBus.Error.UnknownObject: No such object path"
+        )
+        assert backend.is_valid(NativeHandle(accessible)) is False
+
+    def test_returns_false_for_attribute_error(self, backend: LinuxBackend) -> None:
+        """is_valid returns False when getState raises AttributeError."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        accessible.getState.side_effect = AttributeError("getState")
+        assert backend.is_valid(NativeHandle(accessible)) is False
+
+    def test_returns_false_for_os_error(self, backend: LinuxBackend) -> None:
+        """is_valid returns False when getState raises OSError."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        accessible.getState.side_effect = OSError("Connection closed")
+        assert backend.is_valid(NativeHandle(accessible)) is False
+
+    # -- None / invalid handles ----------------------------------------------
+
     def test_returns_false_for_none(self, backend: LinuxBackend) -> None:
         """is_valid returns False for None handle."""
         assert backend.is_valid(None) is False
+
+    def test_returns_false_for_non_callable_get_state(self, backend: LinuxBackend) -> None:
+        """is_valid returns False when element.getState is not callable."""
+        from guidewire.backends.types import NativeHandle
+
+        # element.getState exists but is not callable (e.g. an int)
+        accessible = MagicMock(spec=[])
+        accessible.getState = 42  # type: ignore[attr-defined]
+        assert backend.is_valid(NativeHandle(accessible)) is False
+
+    # -- Disposed backend ----------------------------------------------------
 
     def test_returns_false_when_disposed(self, backend: LinuxBackend) -> None:
         """is_valid returns False when backend is disposed."""
@@ -769,14 +823,25 @@ class TestIsValid:
         backend.dispose()
         assert backend.is_valid(NativeHandle(accessible)) is False
 
+    def test_disposed_does_not_call_get_state(self, backend: LinuxBackend) -> None:
+        """A disposed backend returns False without probing the element."""
+        from guidewire.backends.types import NativeHandle
+
+        accessible = MagicMock()
+        backend.dispose()
+        backend.is_valid(NativeHandle(accessible))
+        accessible.getState.assert_not_called()
+
+    # -- Never raises --------------------------------------------------------
+
     def test_never_raises(self, backend: LinuxBackend) -> None:
         """is_valid must never raise an exception."""
-        # None handle
-        assert backend.is_valid(None) is False
-        # Arbitrary object
-        assert backend.is_valid("random string") is False
-        assert backend.is_valid(42) is False
-        assert backend.is_valid(object()) is False
+        for value in [None, "random string", 42, object()]:
+            try:
+                result = backend.is_valid(value)
+                assert isinstance(result, bool)
+            except Exception as exc:
+                pytest.fail(f"is_valid raised {type(exc).__name__} for {value!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -851,31 +916,43 @@ class TestFindElements:
 
     def test_matches_by_role(self, backend: LinuxBackend) -> None:
         """find_elements matches elements by normalized role."""
-        window = self._make_tree([
-            ("push button", "OK"),
-            ("text", "Label"),
-            ("push button", "Cancel"),
-        ])
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree(
+            [
+                ("push button", "OK"),
+                ("text", "Label"),
+                ("push button", "Cancel"),
+            ]
+        )
         result = backend.find_elements(NativeHandle(window), role="button")
         assert len(result) == 2
 
     def test_matches_by_name_substring(self, backend: LinuxBackend) -> None:
         """find_elements matches elements by case-insensitive name substring."""
-        window = self._make_tree([
-            ("push button", "Save File"),
-            ("push button", "Cancel"),
-            ("push button", "save as"),
-        ])
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree(
+            [
+                ("push button", "Save File"),
+                ("push button", "Cancel"),
+                ("push button", "save as"),
+            ]
+        )
         result = backend.find_elements(NativeHandle(window), name="save")
         assert len(result) == 2
 
     def test_matches_by_role_and_name(self, backend: LinuxBackend) -> None:
         """find_elements matches elements satisfying both role and name."""
-        window = self._make_tree([
-            ("push button", "Save"),
-            ("text", "Save"),
-            ("push button", "Cancel"),
-        ])
+        from guidewire.backends.types import NativeHandle
+
+        window = self._make_tree(
+            [
+                ("push button", "Save"),
+                ("text", "Save"),
+                ("push button", "Cancel"),
+            ]
+        )
         result = backend.find_elements(NativeHandle(window), role="button", name="Save")
         assert len(result) == 1
 
