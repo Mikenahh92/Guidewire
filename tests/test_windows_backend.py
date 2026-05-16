@@ -158,7 +158,10 @@ class TestStubMethods:
         ):
             b = WindowsBackend.__new__(WindowsBackend)
             b._com_initialized = True
-            b._uia = MagicMock()
+            uia_mock = MagicMock()
+            uia_mock.ControlViewWalker.GetFirstChildElement.return_value = None
+            uia_mock.ControlViewWalker.GetNextSiblingElement.return_value = None
+            b._uia = uia_mock
             b._disposed = False
             return b
 
@@ -224,17 +227,36 @@ class TestStubMethods:
         with pytest.raises(NotImplementedError, match="get_window_info"):
             backend.get_window_info(NativeHandle("fake"))
 
-    def test_snapshot_raises_not_implemented(self, backend: WindowsBackend) -> None:
+    def test_focus_window_invalid_handle_raises_window_not_found(self, backend: WindowsBackend) -> None:
+        """focus_window is implemented (GW-021); invalid handle raises WindowNotFoundError."""
+        from guidewire.backends.types import NativeHandle
+        from guidewire.errors import WindowNotFoundError
+
+        with pytest.raises(WindowNotFoundError):
+            backend.focus_window(NativeHandle(0))
+
+    def test_snapshot_no_longer_raises_not_implemented(self, backend: WindowsBackend) -> None:
         from guidewire.backends.types import NativeHandle
 
-        with pytest.raises(NotImplementedError, match="snapshot"):
-            backend.snapshot(NativeHandle("fake"))
+        # snapshot() is now implemented (GW-022); verify it no longer raises
+        # NotImplementedError.  With the mock _uia, it will attempt to walk
+        # a tree and return a dict (even if empty/mocked).
+        try:
+            result = backend.snapshot(NativeHandle("fake"))
+            assert isinstance(result, dict)
+        except NotImplementedError:
+            pytest.fail("snapshot() should no longer raise NotImplementedError")
 
-    def test_find_elements_raises_not_implemented(self, backend: WindowsBackend) -> None:
+    def test_find_elements_no_longer_raises_not_implemented(self, backend: WindowsBackend) -> None:
         from guidewire.backends.types import NativeHandle
 
-        with pytest.raises(NotImplementedError, match="find_elements"):
-            backend.find_elements(NativeHandle("fake"), role="button")
+        # find_elements() is now implemented (GW-022); verify it no longer raises
+        # NotImplementedError.  With the mock _uia, it returns a list.
+        try:
+            result = backend.find_elements(NativeHandle("fake"), role="button")
+            assert isinstance(result, list)
+        except NotImplementedError:
+            pytest.fail("find_elements() should no longer raise NotImplementedError")
 
     def test_perform_action_raises_not_implemented(self, backend: WindowsBackend) -> None:
         from guidewire.backends.types import DesktopAction, NativeHandle
