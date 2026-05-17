@@ -98,10 +98,15 @@ def assert_call_order(result: AgentResult, expected_order: list[str]) -> None:
     actual_names = [tc.name for tc in result.tool_calls]
 
     # Find positions of each expected tool in the actual call list.
+    # Use a running start position so that duplicate tool names in
+    # expected_order resolve to their correct sequential occurrences.
     positions: list[int] = []
+    start_pos = 0
     for expected in expected_order:
         try:
-            positions.append(actual_names.index(expected))
+            idx = actual_names.index(expected, start_pos)
+            positions.append(idx)
+            start_pos = idx + 1
         except ValueError as exc:
             raise AssertionError(
                 f"Expected tool {expected!r} to be called, but it was not. "

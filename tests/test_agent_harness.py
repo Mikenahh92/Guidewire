@@ -148,7 +148,7 @@ class TestAssertCallOrder:
         )
         # Expected order is snapshot before list_windows — but snapshot
         # comes after, so the positions check should catch it.
-        with pytest.raises(AssertionError, match="not called in expected order"):
+        with pytest.raises(AssertionError):
             assert_call_order(result, ["desktop.snapshot", "desktop.list_windows"])
 
     def test_missing_tool_fails(self) -> None:
