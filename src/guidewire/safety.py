@@ -1,4 +1,5 @@
-"""Element risk classification for the Guidewire Desktop Accessibility MCP server.
+"""Element and system-action risk classification for the Guidewire Desktop
+Accessibility MCP server.
 
 Provides a three-tier risk model (PRD R12) so that tool handlers can attach
 risk metadata to MCP responses without blocking actions.
@@ -17,6 +18,13 @@ SENSITIVE
     Elements whose activation can cause significant side-effects
     (buttons that submit, delete, or invoke destructive actions; password
     fields; OS-level controls).
+
+System actions
+--------------
+System actions are non-element operations that the MCP server can perform,
+such as launching an application or writing to the clipboard.  They are
+classified with the same three-tier model via
+:func:`classify_system_action`.
 """
 
 from __future__ import annotations
@@ -222,11 +230,110 @@ ROLE_RISK_MAP: dict[str, RiskLevel] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# System-action type
+# ---------------------------------------------------------------------------
+
+SystemAction = Literal[
+    "app_launch",
+    "app_close",
+    "clipboard_read",
+    "clipboard_write",
+    "screenshot",
+    "window_list",
+    "window_focus",
+    "window_close",
+    "system_info",
+]
+
+# ---------------------------------------------------------------------------
+# SYSTEM_ACTION_RISK_MAP — maps system actions to their default risk level
+# ---------------------------------------------------------------------------
+
+SYSTEM_ACTION_RISK_MAP: dict[SystemAction, RiskLevel] = {
+    "app_launch": "SENSITIVE",
+    "app_close": "SENSITIVE",
+    "clipboard_read": "INTERACTION",
+    "clipboard_write": "SENSITIVE",
+    "screenshot": "INTERACTION",
+    "window_list": "READ_ONLY",
+    "window_focus": "INTERACTION",
+    "window_close": "SENSITIVE",
+    "system_info": "READ_ONLY",
+}
+
+
+# ---------------------------------------------------------------------------
+# System-action classification function
+# ---------------------------------------------------------------------------
+
+
+def classify_system_action(
+    action: SystemAction,
+    *,
+    target: str | None = None,
+) -> RiskAssessment:
+    """Return a :class:`RiskAssessment` for a non-element system action.
+
+    System actions are operations that do not target a specific accessibility
+    element — for example launching an application or writing to the OS
+    clipboard.  They use the same PRD R12 three-tier risk model as
+    :func:`classify` but are keyed by action name rather than element role.
+
+    Args:
+        action: The system action being performed (e.g. ``"app_launch"``).
+        target: An optional human-readable target identifier (e.g. the
+            application name or clipboard data description).  Used to enrich
+            the reason string but does not affect risk level.
+
+    Returns:
+        A frozen :class:`RiskAssessment` dataclass with risk metadata.
+        Unknown actions default to SENSITIVE as a safe fallback.
+    """
+    known = action in SYSTEM_ACTION_RISK_MAP
+    if not known:
+        risk_level: RiskLevel = "SENSITIVE"
+    else:
+        risk_level = SYSTEM_ACTION_RISK_MAP[action]
+
+    confirmation_required = risk_level == "SENSITIVE"
+    target_clause = f" on '{target}'" if target else ""
+    if not known:
+        reason = f"Unknown system action '{action}'{target_clause} defaults to SENSITIVE"
+        confidence = 0.8
+    else:
+        reason = _system_action_reason(action, risk_level, target_clause)
+        confidence = 1.0
+
+    return RiskAssessment(
+        risk_level=risk_level,
+        confirmation_required=confirmation_required,
+        reason=reason,
+        confidence=confidence,
+    )
+
+
+def _system_action_reason(
+    action: SystemAction,
+    risk_level: RiskLevel,
+    target_clause: str,
+) -> str:
+    """Build a human-readable reason string for a system action."""
+    if risk_level == "SENSITIVE":
+        return f"System action '{action}'{target_clause} requires confirmation"
+    if risk_level == "READ_ONLY":
+        return f"System action '{action}'{target_clause} is read-only"
+    return f"System action '{action}'{target_clause} is an interaction"
+
+
 __all__ = [
     "DESTRUCTIVE_NAME_PATTERNS",
     "ROLE_RISK_MAP",
     "SENSITIVE_ROLES",
+    "SYSTEM_ACTION_RISK_MAP",
     "RiskAssessment",
     "RiskLevel",
+    "SystemAction",
     "classify",
+    "classify_system_action",
 ]

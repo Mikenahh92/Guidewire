@@ -1,4 +1,5 @@
-"""Tests for guidewire.safety — PRD R12 three-tier element risk classification."""
+"""Tests for guidewire.safety — PRD R12 three-tier element and system-action
+risk classification."""
 
 from __future__ import annotations
 
@@ -11,9 +12,12 @@ from guidewire.safety import (
     DESTRUCTIVE_NAME_PATTERNS,
     ROLE_RISK_MAP,
     SENSITIVE_ROLES,
+    SYSTEM_ACTION_RISK_MAP,
     RiskAssessment,
     RiskLevel,
+    SystemAction,
     classify,
+    classify_system_action,
 )
 
 # ---------------------------------------------------------------------------
@@ -825,13 +829,16 @@ class TestExports:
             "SENSITIVE_ROLES",
             "DESTRUCTIVE_NAME_PATTERNS",
             "ROLE_RISK_MAP",
+            "SYSTEM_ACTION_RISK_MAP",
+            "SystemAction",
             "classify",
+            "classify_system_action",
         }
 
     def test_all_count(self) -> None:
         from guidewire import safety
 
-        assert len(safety.__all__) == 6
+        assert len(safety.__all__) == 9
 
     def test_import_risk_assessment(self) -> None:
         from guidewire.safety import RiskAssessment  # noqa: F401
@@ -850,6 +857,15 @@ class TestExports:
 
     def test_import_role_risk_map(self) -> None:
         from guidewire.safety import ROLE_RISK_MAP  # noqa: F401
+
+    def test_import_system_action_risk_map(self) -> None:
+        from guidewire.safety import SYSTEM_ACTION_RISK_MAP  # noqa: F401
+
+    def test_import_system_action(self) -> None:
+        from guidewire.safety import SystemAction  # noqa: F401
+
+    def test_import_classify_system_action(self) -> None:
+        from guidewire.safety import classify_system_action  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -1060,3 +1076,350 @@ class TestRiskAssessmentRepr:
             ra.risk_level = "SENSITIVE"  # type: ignore[misc]
         with pytest.raises(AttributeError):
             ra.confidence = 0.0  # type: ignore[misc]
+
+
+# ===========================================================================
+# classify_system_action tests
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.1: SystemAction type
+# ---------------------------------------------------------------------------
+
+
+class TestSystemActionType:
+    """SystemAction is a Literal type with the expected action values."""
+
+    def test_is_literal(self) -> None:
+        import typing
+
+        origin = typing.get_origin(SystemAction)
+        assert origin is typing.Literal
+
+    def test_valid_values(self) -> None:
+        import typing
+
+        args = set(typing.get_args(SystemAction))
+        expected = {
+            "app_launch",
+            "app_close",
+            "clipboard_read",
+            "clipboard_write",
+            "screenshot",
+            "window_list",
+            "window_focus",
+            "window_close",
+            "system_info",
+        }
+        assert args == expected
+
+    def test_action_count(self) -> None:
+        import typing
+
+        args = typing.get_args(SystemAction)
+        assert len(args) == 9
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.2: classify_system_action signature
+# ---------------------------------------------------------------------------
+
+
+class TestClassifySystemActionSignature:
+    """classify_system_action returns RiskAssessment for known actions."""
+
+    def test_returns_risk_assessment(self) -> None:
+        result = classify_system_action("app_launch")
+        assert isinstance(result, RiskAssessment)
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "app_launch",
+            "app_close",
+            "clipboard_read",
+            "clipboard_write",
+            "screenshot",
+            "window_list",
+            "window_focus",
+            "window_close",
+            "system_info",
+        ],
+    )
+    def test_all_actions_return_risk_assessment(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert isinstance(result, RiskAssessment)
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.3: SENSITIVE system actions
+# ---------------------------------------------------------------------------
+
+
+class TestSensitiveSystemActions:
+    """System actions that require confirmation (SENSITIVE)."""
+
+    SENSITIVE_ACTIONS: ClassVar[list[SystemAction]] = [
+        "app_launch",
+        "app_close",
+        "clipboard_write",
+        "window_close",
+    ]
+
+    @pytest.mark.parametrize("action", SENSITIVE_ACTIONS)
+    def test_sensitive_risk_level(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.risk_level == "SENSITIVE"
+
+    @pytest.mark.parametrize("action", SENSITIVE_ACTIONS)
+    def test_confirmation_required(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.confirmation_required is True
+
+    @pytest.mark.parametrize("action", SENSITIVE_ACTIONS)
+    def test_sensitive_confidence(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.confidence == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.4: INTERACTION system actions
+# ---------------------------------------------------------------------------
+
+
+class TestInteractionSystemActions:
+    """System actions that are interactions but not destructive."""
+
+    INTERACTION_ACTIONS: ClassVar[list[SystemAction]] = [
+        "clipboard_read",
+        "screenshot",
+        "window_focus",
+    ]
+
+    @pytest.mark.parametrize("action", INTERACTION_ACTIONS)
+    def test_interaction_risk_level(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.risk_level == "INTERACTION"
+
+    @pytest.mark.parametrize("action", INTERACTION_ACTIONS)
+    def test_no_confirmation_required(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.confirmation_required is False
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.5: READ_ONLY system actions
+# ---------------------------------------------------------------------------
+
+
+class TestReadOnlySystemActions:
+    """System actions that are read-only."""
+
+    READ_ONLY_ACTIONS: ClassVar[list[SystemAction]] = [
+        "window_list",
+        "system_info",
+    ]
+
+    @pytest.mark.parametrize("action", READ_ONLY_ACTIONS)
+    def test_read_only_risk_level(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.risk_level == "READ_ONLY"
+
+    @pytest.mark.parametrize("action", READ_ONLY_ACTIONS)
+    def test_no_confirmation_required(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.confirmation_required is False
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.6: Unknown system action defaults to SENSITIVE
+# ---------------------------------------------------------------------------
+
+
+class TestUnknownSystemAction:
+    """Unknown/unrecognised system actions default to SENSITIVE (safe fallback)."""
+
+    def test_unknown_action_defaults_to_sensitive(self) -> None:
+        result = classify_system_action("unknown_action")  # type: ignore[arg-type]
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+        assert "defaults to SENSITIVE" in result.reason
+        assert result.confidence == 0.8
+
+    def test_empty_action_defaults_to_sensitive(self) -> None:
+        result = classify_system_action("")  # type: ignore[arg-type]
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+        assert "defaults to SENSITIVE" in result.reason
+
+    def test_typo_action_defaults_to_sensitive(self) -> None:
+        result = classify_system_action("app_launc")  # type: ignore[arg-type]
+        assert result.risk_level == "SENSITIVE"
+        assert result.confirmation_required is True
+        assert "defaults to SENSITIVE" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.7: Target parameter enriches reason
+# ---------------------------------------------------------------------------
+
+
+class TestSystemActionTarget:
+    """The optional target parameter enriches reason strings."""
+
+    def test_target_in_reason_app_launch(self) -> None:
+        result = classify_system_action("app_launch", target="notepad.exe")
+        assert "notepad.exe" in result.reason
+
+    def test_target_in_reason_clipboard_write(self) -> None:
+        result = classify_system_action("clipboard_write", target="sensitive data")
+        assert "sensitive data" in result.reason
+
+    def test_no_target_no_clause(self) -> None:
+        result = classify_system_action("app_launch")
+        assert " on '" not in result.reason
+
+    def test_target_does_not_change_risk_level(self) -> None:
+        result_with = classify_system_action("app_launch", target="test")
+        result_without = classify_system_action("app_launch")
+        assert result_with.risk_level == result_without.risk_level
+
+    def test_target_does_not_change_confirmation(self) -> None:
+        result_with = classify_system_action("clipboard_read", target="text")
+        result_without = classify_system_action("clipboard_read")
+        assert result_with.confirmation_required == result_without.confirmation_required
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.8: Reason string format
+# ---------------------------------------------------------------------------
+
+
+class TestSystemActionReasonFormat:
+    """Reason strings follow expected patterns for each risk level."""
+
+    def test_sensitive_reason_mentions_confirmation(self) -> None:
+        result = classify_system_action("app_launch")
+        assert "requires confirmation" in result.reason
+
+    def test_read_only_reason_mentions_read_only(self) -> None:
+        result = classify_system_action("system_info")
+        assert "read-only" in result.reason.lower()
+
+    def test_interaction_reason_mentions_interaction(self) -> None:
+        result = classify_system_action("clipboard_read")
+        assert "interaction" in result.reason.lower()
+
+    def test_reason_contains_action_name(self) -> None:
+        result = classify_system_action("app_launch")
+        assert "app_launch" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.9: SYSTEM_ACTION_RISK_MAP completeness
+# ---------------------------------------------------------------------------
+
+
+class TestSystemActionRiskMapCompleteness:
+    """SYSTEM_ACTION_RISK_MAP covers all SystemAction values."""
+
+    def test_map_is_dict(self) -> None:
+        assert isinstance(SYSTEM_ACTION_RISK_MAP, dict)
+
+    def test_covers_all_actions(self) -> None:
+        import typing
+
+        for action in typing.get_args(SystemAction):
+            assert action in SYSTEM_ACTION_RISK_MAP, f"{action} missing from SYSTEM_ACTION_RISK_MAP"
+
+    def test_entry_count(self) -> None:
+        assert len(SYSTEM_ACTION_RISK_MAP) == 9
+
+    def test_values_are_valid_risk_levels(self) -> None:
+        for value in SYSTEM_ACTION_RISK_MAP.values():
+            assert value in ("READ_ONLY", "INTERACTION", "SENSITIVE")
+
+    def test_sensitive_count(self) -> None:
+        sensitive = [a for a, v in SYSTEM_ACTION_RISK_MAP.items() if v == "SENSITIVE"]
+        assert len(sensitive) == 4
+
+    def test_interaction_count(self) -> None:
+        interaction = [a for a, v in SYSTEM_ACTION_RISK_MAP.items() if v == "INTERACTION"]
+        assert len(interaction) == 3
+
+    def test_read_only_count(self) -> None:
+        read_only = [a for a, v in SYSTEM_ACTION_RISK_MAP.items() if v == "READ_ONLY"]
+        assert len(read_only) == 2
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.10: Confidence values
+# ---------------------------------------------------------------------------
+
+
+class TestSystemActionConfidence:
+    """All classify_system_action results have confidence 1.0."""
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "app_launch",
+            "app_close",
+            "clipboard_read",
+            "clipboard_write",
+            "screenshot",
+            "window_list",
+            "window_focus",
+            "window_close",
+            "system_info",
+        ],
+    )
+    def test_confidence_is_1(self, action: SystemAction) -> None:
+        result = classify_system_action(action)
+        assert result.confidence == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.11: Returned RiskAssessment is frozen
+# ---------------------------------------------------------------------------
+
+
+class TestSystemActionRiskAssessmentFrozen:
+    """classify_system_action returns the same frozen RiskAssessment dataclass."""
+
+    def test_result_is_frozen(self) -> None:
+        result = classify_system_action("app_launch")
+        with pytest.raises(AttributeError):
+            result.risk_level = "READ_ONLY"  # type: ignore[misc]
+
+    def test_result_has_slots(self) -> None:
+        result = classify_system_action("app_launch")
+        assert "__slots__" in type(result).__dict__
+
+
+# ---------------------------------------------------------------------------
+# TC-SA.12: Specific action risk levels
+# ---------------------------------------------------------------------------
+
+
+class TestSpecificSystemActionRiskLevels:
+    """Each system action maps to the correct risk level."""
+
+    @pytest.mark.parametrize(
+        ("action", "expected_level"),
+        [
+            ("app_launch", "SENSITIVE"),
+            ("app_close", "SENSITIVE"),
+            ("clipboard_read", "INTERACTION"),
+            ("clipboard_write", "SENSITIVE"),
+            ("screenshot", "INTERACTION"),
+            ("window_list", "READ_ONLY"),
+            ("window_focus", "INTERACTION"),
+            ("window_close", "SENSITIVE"),
+            ("system_info", "READ_ONLY"),
+        ],
+    )
+    def test_risk_level(self, action: SystemAction, expected_level: RiskLevel) -> None:
+        result = classify_system_action(action)
+        assert result.risk_level == expected_level
