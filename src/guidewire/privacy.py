@@ -5,12 +5,14 @@ Prevents sensitive data from leaking into MCP responses by:
 - Detecting password and sensitive input fields via heuristic patterns
 - Redacting element values on :class:`~guidewire.models.NormalizedElement` instances
 - Filtering out denylisted applications from snapshot trees
+- Redacting sensitive content in clipboard text via line-by-line keyword scanning
 
 Public API::
 
     from guidewire.privacy import (
         PrivacyConfig,
         is_password_field,
+        redact_clipboard_text,
         redact_element,
         redact_snapshot,
     )
@@ -19,6 +21,7 @@ Public API::
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, replace
 
 from guidewire.models import NormalizedElement
@@ -26,6 +29,7 @@ from guidewire.models import NormalizedElement
 __all__ = [
     "PrivacyConfig",
     "is_password_field",
+    "redact_clipboard_text",
     "redact_element",
     "redact_snapshot",
 ]
@@ -224,8 +228,61 @@ def redact_snapshot(
     return [_redact_tree(el, config, app_name, is_root=True) for el in elements]
 
 
+# ---------------------------------------------------------------------------
+# redact_clipboard_text
+# ---------------------------------------------------------------------------
+
+# Pre-compiled regex for line-by-line keyword detection (case-insensitive).
+# Any line containing one of the 6 sensitive keywords is fully replaced.
+_CLIPBOARD_KEYWORD_RE = re.compile(
+    r"(password|passwd|pwd|secret|credential|pin)",
+    re.IGNORECASE,
+)
+
+
+def redact_clipboard_text(
+    text: str,
+    *,
+    config: PrivacyConfig | None = None,
+) -> str:
+    """Redact sensitive content in clipboard text.
+
+    Performs line-by-line scanning: any line that contains one of the 6
+    sensitive keywords (``password``, ``passwd``, ``pwd``, ``secret``,
+    ``credential``, ``pin``) is **fully replaced** with the configured
+    redaction placeholder. Non-sensitive lines are left intact.
+
+    Uses the same 6 keyword patterns as :func:`is_password_field`.
+
+    Args:
+        text: Clipboard text content to redact.
+        config: Privacy configuration. When ``None``, defaults to a fresh
+            :class:`PrivacyConfig`. When ``config.redact_passwords`` is
+            ``False``, the original text is returned unchanged.
+
+    Returns:
+        The text with sensitive lines replaced by the redaction placeholder.
+    """
+    if config is None:
+        config = PrivacyConfig()
+
+    if not config.redact_passwords:
+        return text
+
+    placeholder = config.redaction_placeholder
+
+    lines = text.split("\n")
+    result_lines = [
+        placeholder if _CLIPBOARD_KEYWORD_RE.search(line) else line
+        for line in lines
+    ]
+    return "\n".join(result_lines)
+
+
 def _is_denylisted(
-    name: str, config: PrivacyConfig, app_name: str | None,
+    name: str,
+    config: PrivacyConfig,
+    app_name: str | None,
 ) -> bool:
     """Check whether an application name is on the denylist."""
     if app_name and app_name.lower() in {a.lower() for a in config.denylist_apps}:
@@ -268,10 +325,7 @@ def _redact_tree(
     # Recurse into children
     children = element.children
     if children:
-        new_children = [
-            _redact_tree(child, config, app_name, is_root=False)
-            for child in children
-        ]
+        new_children = [_redact_tree(child, config, app_name, is_root=False) for child in children]
         changes["children"] = new_children
 
     return replace(element, **changes) if changes else element

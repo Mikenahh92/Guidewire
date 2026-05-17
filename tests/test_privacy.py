@@ -1,4 +1,4 @@
-"""Tests for privacy controls (GW-007).
+"""Tests for privacy controls (GW-007, GW-044).
 
 Verifies that the privacy module:
 - Detects password and sensitive fields via name and state heuristics (role=text_input only)
@@ -6,8 +6,9 @@ Verifies that the privacy module:
 - Redacts entire snapshot tree lists recursively
 - Replaces denylisted application windows with stub elements
 - PrivacyConfig is a frozen dataclass with spec-matching fields
-- __all__ exports exactly 4 names
+- __all__ exports exactly 5 names
 - Deep copy returned when redact_passwords=False
+- Redacts sensitive content in clipboard text via line-by-line keyword scanning
 """
 
 import pytest
@@ -16,6 +17,7 @@ from guidewire.models import Bounds, ElementStates, NormalizedElement
 from guidewire.privacy import (
     PrivacyConfig,
     is_password_field,
+    redact_clipboard_text,
     redact_element,
     redact_snapshot,
 )
@@ -125,14 +127,15 @@ def sample_snapshot() -> NormalizedElement:
 
 
 class TestExports:
-    """Verify module exports exactly 4 public names (F6)."""
+    """Verify module exports exactly 5 public names (F6)."""
 
-    def test_all_exports_exactly_four(self) -> None:
+    def test_all_exports_exactly_five(self) -> None:
         import guidewire.privacy as mod
 
         assert sorted(mod.__all__) == [
             "PrivacyConfig",
             "is_password_field",
+            "redact_clipboard_text",
             "redact_element",
             "redact_snapshot",
         ]
@@ -145,11 +148,13 @@ class TestExports:
     def test_functions_importable(self) -> None:
         from guidewire.privacy import (
             is_password_field,
+            redact_clipboard_text,
             redact_element,
             redact_snapshot,
         )
 
         assert callable(is_password_field)
+        assert callable(redact_clipboard_text)
         assert callable(redact_element)
         assert callable(redact_snapshot)
 
@@ -348,7 +353,9 @@ class TestRedactElement:
 
     def test_redact_description_true(self) -> None:
         el = _el(
-            role="text_input", name="Password", value="secret",
+            role="text_input",
+            name="Password",
+            value="secret",
             description="Enter your password",
         )
         result = redact_element(el, redact_description=True)
@@ -356,7 +363,9 @@ class TestRedactElement:
 
     def test_redact_description_false_default(self) -> None:
         el = _el(
-            role="text_input", name="Password", value="secret",
+            role="text_input",
+            name="Password",
+            value="secret",
             description="Enter your password",
         )
         result = redact_element(el)
@@ -400,7 +409,9 @@ class TestRedactSnapshot:
     """Verify snapshot tree list redaction (F1)."""
 
     def test_redacts_password_in_tree(
-        self, config: PrivacyConfig, sample_snapshot: NormalizedElement,
+        self,
+        config: PrivacyConfig,
+        sample_snapshot: NormalizedElement,
     ) -> None:
         result = redact_snapshot([sample_snapshot], config=config)
         pw = next(c for c in result[0].children if c.name == "Password")
@@ -408,7 +419,9 @@ class TestRedactSnapshot:
         assert pw.text == "[REDACTED]"
 
     def test_preserves_non_sensitive_in_tree(
-        self, config: PrivacyConfig, sample_snapshot: NormalizedElement,
+        self,
+        config: PrivacyConfig,
+        sample_snapshot: NormalizedElement,
     ) -> None:
         result = redact_snapshot([sample_snapshot], config=config)
         username = next(c for c in result[0].children if c.name == "Username")
@@ -416,7 +429,9 @@ class TestRedactSnapshot:
         assert username.text == "admin"
 
     def test_does_not_mutate_original(
-        self, config: PrivacyConfig, sample_snapshot: NormalizedElement,
+        self,
+        config: PrivacyConfig,
+        sample_snapshot: NormalizedElement,
     ) -> None:
         original_value = sample_snapshot.children[1].value
         redact_snapshot([sample_snapshot], config=config)
@@ -492,12 +507,18 @@ class TestRedactSnapshot:
 
     def test_multiple_roots(self, config: PrivacyConfig) -> None:
         """redact_snapshot accepts list[NormalizedElement] (F1)."""
-        tree1 = _window(name="Window1", children=[
-            _el(role="text_input", name="Password", value="secret", ref="e1"),
-        ])
-        tree2 = _window(name="Window2", children=[
-            _el(role="text_input", name="PIN", value="1234", ref="e2"),
-        ])
+        tree1 = _window(
+            name="Window1",
+            children=[
+                _el(role="text_input", name="Password", value="secret", ref="e1"),
+            ],
+        )
+        tree2 = _window(
+            name="Window2",
+            children=[
+                _el(role="text_input", name="PIN", value="1234", ref="e2"),
+            ],
+        )
         result = redact_snapshot([tree1, tree2], config=config)
         assert len(result) == 2
         assert result[0].children[0].value == "[REDACTED]"
@@ -506,7 +527,9 @@ class TestRedactSnapshot:
     # -- Deep copy when redact_passwords=False (F3) --
 
     def test_silent_config_returns_deep_copy(
-        self, silent_config: PrivacyConfig, sample_snapshot: NormalizedElement,
+        self,
+        silent_config: PrivacyConfig,
+        sample_snapshot: NormalizedElement,
     ) -> None:
         input_list = [sample_snapshot]
         result = redact_snapshot(input_list, config=silent_config)
@@ -518,9 +541,12 @@ class TestRedactSnapshot:
         assert pw.value == "super_secret_123"
 
     def test_silent_config_deep_copy_is_independent(self, silent_config: PrivacyConfig) -> None:
-        tree = _window(name="Test", children=[
-            _el(role="text_input", name="Password", value="secret", ref="e1"),
-        ])
+        tree = _window(
+            name="Test",
+            children=[
+                _el(role="text_input", name="Password", value="secret", ref="e1"),
+            ],
+        )
         result = redact_snapshot([tree], config=silent_config)
         # Modifying the result should not affect the original
         assert result[0].children[0].value == "secret"
@@ -532,7 +558,8 @@ class TestRedactSnapshot:
     # -- Denylist at snapshot level --
 
     def test_denylisted_window_replaced_with_stub(
-        self, denylist_config: PrivacyConfig,
+        self,
+        denylist_config: PrivacyConfig,
     ) -> None:
         windows = [
             _window(name="Notepad", ref="w1"),
@@ -559,15 +586,19 @@ class TestRedactSnapshot:
         assert stub.name == "[APP DENYLISTED]"
 
     def test_denylist_preserves_non_sensitive_children(
-        self, denylist_config: PrivacyConfig,
+        self,
+        denylist_config: PrivacyConfig,
     ) -> None:
         windows = [
             _window(
                 name="keepass.exe",
                 children=[
                     _el(
-                        role="text_input", name="Password",
-                        value="secret", text="secret", ref="e1",
+                        role="text_input",
+                        name="Password",
+                        value="secret",
+                        text="secret",
+                        ref="e1",
                     ),
                 ],
                 ref="w1",
@@ -580,7 +611,8 @@ class TestRedactSnapshot:
         assert stub.children is None  # stub has no children
 
     def test_non_window_children_not_denylist_checked(
-        self, denylist_config: PrivacyConfig,
+        self,
+        denylist_config: PrivacyConfig,
     ) -> None:
         """Denylist only applies to window-role children, not nested elements."""
         tree = _window(
@@ -724,12 +756,18 @@ class TestRedactElementAllFields:
 
     def test_redact_all_fields(self) -> None:
         el = _el(
-            role="text_input", name="Password",
-            value="v", text="t", description="desc",
+            role="text_input",
+            name="Password",
+            value="v",
+            text="t",
+            description="desc",
         )
         result = redact_element(
-            el, redact_value=True, redact_text=True,
-            redact_name=True, redact_description=True,
+            el,
+            redact_value=True,
+            redact_text=True,
+            redact_name=True,
+            redact_description=True,
         )
         assert result.value == "[REDACTED]"
         assert result.text == "[REDACTED]"
@@ -740,12 +778,17 @@ class TestRedactElementAllFields:
         """Redacting zero fields on password element returns copy with
         no changes to value/text/name/description."""
         el = _el(
-            role="text_input", name="Password",
-            value="v", text="t",
+            role="text_input",
+            name="Password",
+            value="v",
+            text="t",
         )
         result = redact_element(
-            el, redact_value=False, redact_text=False,
-            redact_name=False, redact_description=False,
+            el,
+            redact_value=False,
+            redact_text=False,
+            redact_name=False,
+            redact_description=False,
         )
         assert result.value == "v"
         assert result.text == "t"
@@ -754,8 +797,10 @@ class TestRedactElementAllFields:
     def test_redact_preserves_other_fields(self) -> None:
         """redact_element preserves ref, backend_id, role, states, bounds."""
         el = _el(
-            role="text_input", name="Password",
-            value="v", text="t",
+            role="text_input",
+            name="Password",
+            value="v",
+            text="t",
             states=ElementStates(enabled=True),
         )
         result = redact_element(el)
@@ -802,8 +847,11 @@ class TestRedactSnapshotIdempotency:
             name="Form",
             children=[
                 _el(
-                    role="text_input", name="Password",
-                    value="secret", text="secret", ref="e1",
+                    role="text_input",
+                    name="Password",
+                    value="secret",
+                    text="secret",
+                    ref="e1",
                 ),
             ],
         )
@@ -852,8 +900,11 @@ class TestCustomPlaceholder:
             name="Form",
             children=[
                 _el(
-                    role="text_input", name="Password",
-                    value="secret", text="secret", ref="e1",
+                    role="text_input",
+                    name="Password",
+                    value="secret",
+                    text="secret",
+                    ref="e1",
                 ),
             ],
         )
@@ -861,3 +912,157 @@ class TestCustomPlaceholder:
         pw = result[0].children[0]
         assert pw.value == "[HIDDEN]"
         assert pw.text == "[HIDDEN]"
+
+
+# ---------------------------------------------------------------------------
+# redact_clipboard_text
+# ---------------------------------------------------------------------------
+
+
+class TestRedactClipboardText:
+    """Verify clipboard text redaction (GW-044).
+
+    Line-by-line keyword scanning: any line containing a sensitive keyword
+    is fully replaced with the redaction placeholder.
+    """
+
+    # -- Single-line detection: entire line replaced --
+
+    def test_password_equals(self) -> None:
+        result = redact_clipboard_text("password=secret123")
+        assert result == "[REDACTED]"
+
+    def test_passwd_equals(self) -> None:
+        result = redact_clipboard_text("passwd=abc")
+        assert result == "[REDACTED]"
+
+    def test_pwd_equals(self) -> None:
+        result = redact_clipboard_text("pwd=xyz")
+        assert result == "[REDACTED]"
+
+    def test_secret_equals(self) -> None:
+        result = redact_clipboard_text("secret=mykey")
+        assert result == "[REDACTED]"
+
+    def test_credential_equals(self) -> None:
+        result = redact_clipboard_text("credential=tkn")
+        assert result == "[REDACTED]"
+
+    def test_pin_equals(self) -> None:
+        result = redact_clipboard_text("pin=1234")
+        assert result == "[REDACTED]"
+
+    # -- Keyword without separator: still redacted (line-by-line scanning) --
+
+    def test_password_colon(self) -> None:
+        result = redact_clipboard_text("password: secret123")
+        assert result == "[REDACTED]"
+
+    def test_secret_colon(self) -> None:
+        result = redact_clipboard_text("api_secret: abcdef123")
+        assert result == "[REDACTED]"
+
+    # -- Case insensitivity --
+
+    def test_case_insensitive_password(self) -> None:
+        assert redact_clipboard_text("PASSWORD=hunter2") == "[REDACTED]"
+        assert redact_clipboard_text("Password=hunter2") == "[REDACTED]"
+
+    def test_case_insensitive_secret(self) -> None:
+        assert redact_clipboard_text("SECRET=abc") == "[REDACTED]"
+
+    # -- Keyword without separator triggers full-line redaction --
+
+    def test_keyword_without_separator(self) -> None:
+        """Line-by-line: any line with keyword is fully replaced (AC1/AC6)."""
+        text = "password is required"
+        result = redact_clipboard_text(text)
+        assert result == "[REDACTED]"
+
+    # -- Multiple matches across lines --
+
+    def test_multiple_sensitive_pairs(self) -> None:
+        text = "user=admin\npassword=s3cret\npin=1234"
+        result = redact_clipboard_text(text)
+        assert result == "user=admin\n[REDACTED]\n[REDACTED]"
+        assert "s3cret" not in result
+        assert "1234" not in result
+
+    # -- Single line with keyword and other content --
+
+    def test_sensitive_line_with_safe_prefix(self) -> None:
+        text = "user=admin password=s3cret pin=1234"
+        result = redact_clipboard_text(text)
+        assert result == "[REDACTED]"
+        assert "s3cret" not in result
+
+    # -- Non-sensitive text preserved --
+
+    def test_non_sensitive_text_unchanged(self) -> None:
+        text = "username=admin email=user@example.com"
+        result = redact_clipboard_text(text)
+        assert result == text
+
+    def test_empty_string(self) -> None:
+        assert redact_clipboard_text("") == ""
+
+    def test_no_sensitive_content(self) -> None:
+        text = "Hello World"
+        assert redact_clipboard_text(text) == text
+
+    # -- Multi-line with mixed sensitive and safe lines --
+
+    def test_multiline_mixed(self) -> None:
+        """TC-060: Multi-line text with some safe and some sensitive lines."""
+        text = "username=admin\npassword=hunter2\nemail=user@example.com"
+        result = redact_clipboard_text(text)
+        lines = result.split("\n")
+        assert lines[0] == "username=admin"
+        assert lines[1] == "[REDACTED]"
+        assert lines[2] == "email=user@example.com"
+
+    def test_multiline_all_sensitive(self) -> None:
+        text = "password=abc\nsecret=xyz"
+        result = redact_clipboard_text(text)
+        assert result == "[REDACTED]\n[REDACTED]"
+
+    def test_multiline_all_safe(self) -> None:
+        text = "name=John\nemail=j@x.com"
+        result = redact_clipboard_text(text)
+        assert result == text
+
+    # -- Config integration --
+
+    def test_custom_placeholder(self) -> None:
+        config = PrivacyConfig(redaction_placeholder="***")
+        result = redact_clipboard_text("password=abc", config=config)
+        assert result == "***"
+
+    def test_silent_config_returns_original(self) -> None:
+        config = PrivacyConfig(redact_passwords=False)
+        text = "password=secret123"
+        result = redact_clipboard_text(text, config=config)
+        assert result == text
+
+    def test_none_config_uses_default(self) -> None:
+        result = redact_clipboard_text("password=abc", config=None)
+        assert result == "[REDACTED]"
+
+    # -- Idempotency --
+
+    def test_idempotent(self) -> None:
+        text = "password=secret"
+        result1 = redact_clipboard_text(text)
+        result2 = redact_clipboard_text(result1)
+        assert result2 == result1
+        assert "[REDACTED]" in result2
+
+    # -- Whitespace around separator (still triggers full-line redaction) --
+
+    def test_whitespace_around_equals(self) -> None:
+        result = redact_clipboard_text("password = secret123")
+        assert result == "[REDACTED]"
+
+    def test_whitespace_around_colon(self) -> None:
+        result = redact_clipboard_text("password : secret123")
+        assert result == "[REDACTED]"
