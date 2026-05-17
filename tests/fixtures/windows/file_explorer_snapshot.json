@@ -1,0 +1,404 @@
+{
+  "_metadata": {
+    "captured_at": "2025-06-01T11:00:00Z",
+    "os_version": "Windows 11 23H2",
+    "app_name": "File Explorer",
+    "guidewire_version": "0.1.0",
+    "max_depth": 4,
+    "max_nodes": 500
+  },
+  "snapshot": {
+    "control_type": 50032,
+    "name": "File Explorer",
+    "value": null,
+    "is_enabled": true,
+    "is_offscreen": false,
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    },
+    "patterns": [],
+    "children": [
+      {
+        "control_type": 50033,
+        "name": "File Explorer",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 32
+        },
+        "patterns": [],
+        "children": []
+      },
+      {
+        "control_type": 50026,
+        "name": "Home",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 0,
+          "y": 32,
+          "width": 1280,
+          "height": 96
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50000,
+            "name": "New",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 8,
+              "y": 36,
+              "width": 80,
+              "height": 36
+            },
+            "patterns": ["Invoke", "ExpandCollapse"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Cut",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 92,
+              "y": 36,
+              "width": 64,
+              "height": 36
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Copy",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 160,
+              "y": 36,
+              "width": 64,
+              "height": 36
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Paste",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 228,
+              "y": 36,
+              "width": 64,
+              "height": 36
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Rename",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 296,
+              "y": 36,
+              "width": 72,
+              "height": 36
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Share",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 372,
+              "y": 36,
+              "width": 64,
+              "height": 36
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          },
+          {
+            "control_type": 50000,
+            "name": "Delete",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 440,
+              "y": 36,
+              "width": 64,
+              "height": 36
+            },
+            "patterns": ["Invoke"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50004,
+        "name": "Address bar",
+        "value": "C:\\Users",
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 200,
+          "y": 40,
+          "width": 800,
+          "height": 28
+        },
+        "patterns": ["Value"],
+        "children": []
+      },
+      {
+        "control_type": 50008,
+        "name": "Navigation pane",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 0,
+          "y": 128,
+          "width": 220,
+          "height": 592
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50007,
+            "name": "Quick access",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 128,
+              "width": 220,
+              "height": 32
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Desktop",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 160,
+              "width": 220,
+              "height": 32
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Downloads",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 192,
+              "width": 220,
+              "height": 32
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Documents",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 224,
+              "width": 220,
+              "height": 32
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "Pictures",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 256,
+              "width": 220,
+              "height": 32
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50007,
+            "name": "This PC",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 0,
+              "y": 304,
+              "width": 220,
+              "height": 32
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50025,
+        "name": "Items",
+        "value": null,
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 220,
+          "y": 128,
+          "width": 1060,
+          "height": 592
+        },
+        "patterns": [],
+        "children": [
+          {
+            "control_type": 50026,
+            "name": "Desktop",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 228,
+              "y": 136,
+              "width": 160,
+              "height": 120
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50026,
+            "name": "Documents",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 392,
+              "y": 136,
+              "width": 160,
+              "height": 120
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50026,
+            "name": "Downloads",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 556,
+              "y": 136,
+              "width": 160,
+              "height": 120
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50026,
+            "name": "Music",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 720,
+              "y": 136,
+              "width": 160,
+              "height": 120
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50026,
+            "name": "Pictures",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 884,
+              "y": 136,
+              "width": 160,
+              "height": 120
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          },
+          {
+            "control_type": 50026,
+            "name": "Videos",
+            "value": null,
+            "is_enabled": true,
+            "is_offscreen": false,
+            "bounds": {
+              "x": 1048,
+              "y": 136,
+              "width": 160,
+              "height": 120
+            },
+            "patterns": ["Invoke", "SelectionItem"],
+            "children": []
+          }
+        ]
+      },
+      {
+        "control_type": 50020,
+        "name": "Status bar",
+        "value": "6 items",
+        "is_enabled": true,
+        "is_offscreen": false,
+        "bounds": {
+          "x": 0,
+          "y": 700,
+          "width": 1280,
+          "height": 20
+        },
+        "patterns": [],
+        "children": []
+      }
+    ]
+  }
+}

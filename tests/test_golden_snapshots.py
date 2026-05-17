@@ -235,6 +235,7 @@ _FIXTURE_NAMES = [
     "notepad_snapshot.json",
     "calculator_snapshot.json",
     "settings_snapshot.json",
+    "file_explorer_snapshot.json",
 ]
 
 
@@ -693,11 +694,12 @@ class TestFixtureFiles:
         assert isinstance(data, dict)
 
     def test_no_extra_fixture_files(self) -> None:
-        """Only the three expected snapshot files should exist."""
+        """Only the four expected snapshot files should exist."""
         json_files = sorted(FIXTURES_DIR.glob("*.json"))
         names = {f.name for f in json_files}
         assert names == {
             "calculator_snapshot.json",
+            "file_explorer_snapshot.json",
             "notepad_snapshot.json",
             "settings_snapshot.json",
         }

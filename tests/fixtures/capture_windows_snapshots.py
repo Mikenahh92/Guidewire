@@ -47,6 +47,12 @@ TARGETS: list[dict[str, Any]] = [
         "filename": "settings_snapshot.json",
         "min_elements": 20,
     },
+    {
+        "name": "File Explorer",
+        "exe": "explorer.exe",
+        "filename": "file_explorer_snapshot.json",
+        "min_elements": 20,
+    },
 ]
 
 

@@ -39,6 +39,12 @@ TARGETS: list[dict[str, Any]] = [
         "filename": "gnome_calculator_snapshot.json",
         "min_elements": 20,
     },
+    {
+        "name": "nautilus",
+        "exe": "nautilus",
+        "filename": "nautilus_snapshot.json",
+        "min_elements": 20,
+    },
 ]
 
 

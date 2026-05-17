@@ -253,6 +253,7 @@ def _validate_metadata(metadata: dict[str, Any]) -> list[str]:
 _LINUX_FIXTURE_NAMES = [
     "gedit_snapshot.json",
     "gnome_calculator_snapshot.json",
+    "nautilus_snapshot.json",
 ]
 
 
@@ -621,12 +622,13 @@ class TestLinuxFixtureFiles:
         assert isinstance(data, dict)
 
     def test_no_extra_fixture_files(self) -> None:
-        """Only the two expected snapshot files should exist."""
+        """Only the three expected snapshot files should exist."""
         json_files = sorted(LINUX_FIXTURES_DIR.glob("*.json"))
         names = {f.name for f in json_files}
         assert names == {
             "gedit_snapshot.json",
             "gnome_calculator_snapshot.json",
+            "nautilus_snapshot.json",
         }
 
 
