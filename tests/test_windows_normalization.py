@@ -469,7 +469,7 @@ class TestWindowsActionNormalization:
             role="ListItem",
             raw_actions=["SelectionItemPattern"],
         )
-        assert "select" in element.actions
+        assert "select_item" in element.actions
 
     def test_expand_collapse_pattern(self) -> None:
         """ExpandCollapsePattern → actions=['expand']."""
@@ -979,7 +979,7 @@ class TestWindowsSettingsNormalization:
         )
         assert element.role == "list_item"
         assert "invoke" in element.actions
-        assert "select" in element.actions
+        assert "select_item" in element.actions
 
     def test_content_pane(self) -> None:
         """Settings content Pane normalizes to 'pane'."""
@@ -1084,7 +1084,7 @@ class TestWindowsSettingsNormalization:
         for item in d["children"][1]["children"]:
             assert item["role"] == "list_item"
             assert "invoke" in item["actions"]
-            assert "select" in item["actions"]
+            assert "select_item" in item["actions"]
 
         # Content pane
         assert d["children"][2]["role"] == "pane"

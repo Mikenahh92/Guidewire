@@ -284,7 +284,7 @@ class TestWindowsActions:
         assert ACTION_MAP[("windows", "TogglePattern")] == "toggle"
 
     def test_select(self) -> None:
-        assert ACTION_MAP[("windows", "SelectionItemPattern")] == "select"
+        assert ACTION_MAP[("windows", "SelectionItemPattern")] == "select_item"
         assert ACTION_MAP[("windows", "SelectionPattern")] == "select"
 
     def test_expand_collapse(self) -> None:
@@ -333,8 +333,8 @@ class TestLinuxActions:
         assert ACTION_MAP[("linux", "toggle")] == "toggle"
 
     def test_select(self) -> None:
-        assert ACTION_MAP[("linux", "select")] == "select"
-        assert ACTION_MAP[("linux", "deselect")] == "select"
+        assert ACTION_MAP[("linux", "select")] == "select_item"
+        assert ACTION_MAP[("linux", "deselect")] == "deselect_item"
 
     def test_scroll(self) -> None:
         assert ACTION_MAP[("linux", "scroll")] == "scroll"

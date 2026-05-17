@@ -35,6 +35,9 @@ DesktopAction = Literal[
     "type",
     "set_value",
     "select",
+    "select_item",
+    "deselect_item",
+    "add_to_selection",
     "toggle",
     "expand",
     "collapse",
@@ -103,6 +106,8 @@ class ElementStates:
         read_only: Whether the element rejects value changes.
         required: Whether the element must be filled for form submission.
         is_password: Whether the element is a password or credential input.
+        multi_selectable: Whether the element supports multiple simultaneous
+            selections (e.g. multi-select list, tree with checkmarks).
     """
 
     enabled: bool | None = None
@@ -115,6 +120,7 @@ class ElementStates:
     read_only: bool | None = None
     required: bool | None = None
     is_password: bool | None = None
+    multi_selectable: bool | None = None
 
     # --- Convenience helpers ------------------------------------------------
 
@@ -165,6 +171,11 @@ class NormalizedElement:
         bounds: Screen-coordinate bounding rectangle.
         actions: List of normalized actions the element supports.
         children: Child elements, if populated by the snapshot.
+        table_row: Zero-based row index for elements inside a table.
+        table_column: Zero-based column index for elements inside a table.
+        tree_level: Zero-based nesting depth for elements inside a tree.
+        selection_state: Current selection state as a string (e.g.
+            ``"selected"``, ``"unselected"``, ``"partial"``).
     """
 
     ref: str
@@ -180,6 +191,10 @@ class NormalizedElement:
     bounds: Bounds | None = None
     actions: list[DesktopAction] = field(default_factory=list)
     children: list["NormalizedElement"] | None = None
+    table_row: int | None = None
+    table_column: int | None = None
+    tree_level: int | None = None
+    selection_state: str | None = None
 
     # --- Convenience helpers ------------------------------------------------
 
@@ -235,6 +250,14 @@ class NormalizedElement:
         else:
             result["bounds"] = None
         result["actions"] = list(self.actions)
+        if self.table_row is not None:
+            result["table_row"] = self.table_row
+        if self.table_column is not None:
+            result["table_column"] = self.table_column
+        if self.tree_level is not None:
+            result["tree_level"] = self.tree_level
+        if self.selection_state is not None:
+            result["selection_state"] = self.selection_state
         children = self.children
         if children:
             result["children"] = [c.to_dict() for c in children]

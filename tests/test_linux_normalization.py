@@ -418,7 +418,7 @@ class TestLinuxActionNormalization:
         assert "invoke" in element.actions
 
     def test_select_deduplication(self) -> None:
-        """``select``, ``deselect``, ``extend`` all normalize to ``select``."""
+        """``select``, ``deselect``, ``extend`` normalize to distinct actions."""
         element = normalize_element(
             platform="linux",
             ref="e",
@@ -426,8 +426,9 @@ class TestLinuxActionNormalization:
             role="list item",
             raw_actions=["select", "deselect", "extend"],
         )
-        assert element.actions.count("select") == 1
-        assert "select" in element.actions
+        assert "select_item" in element.actions
+        assert "deselect_item" in element.actions
+        assert "add_to_selection" in element.actions
 
     def test_scroll_direction_deduplication(self) -> None:
         """All scroll directions normalize to ``scroll`` and dedup."""

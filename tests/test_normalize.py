@@ -292,7 +292,7 @@ class TestResolveAction:
         assert resolve_action("windows", "TogglePattern") == "toggle"
 
     def test_windows_select(self) -> None:
-        assert resolve_action("windows", "SelectionItemPattern") == "select"
+        assert resolve_action("windows", "SelectionItemPattern") == "select_item"
 
     def test_windows_expand(self) -> None:
         assert resolve_action("windows", "ExpandCollapsePattern") == "expand"
@@ -336,7 +336,7 @@ class TestResolveAction:
         assert resolve_action("linux", "toggle") == "toggle"
 
     def test_linux_select(self) -> None:
-        assert resolve_action("linux", "select") == "select"
+        assert resolve_action("linux", "select") == "select_item"
 
     def test_linux_scroll(self) -> None:
         assert resolve_action("linux", "scroll") == "scroll"

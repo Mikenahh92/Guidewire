@@ -189,8 +189,8 @@ class TestDesktopAction:
         assert issubclass(DesktopAction, StrEnum)
 
     def test_has_twelve_values(self) -> None:
-        """DesktopAction should have exactly 12 members."""
-        assert len(DesktopAction) == 12
+        """DesktopAction should have exactly 15 members."""
+        assert len(DesktopAction) == 15
 
     def test_click_member(self) -> None:
         assert DesktopAction.CLICK == "click"

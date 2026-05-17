@@ -150,9 +150,10 @@ class TestNormalizeStates:
             "step": 1,
         })
         assert result.enabled is True
-        # Extended fields should not crash and should be silently ignored.
-        # ElementStates uses slots=True so we can't check for None on
-        # non-existent fields — verify via absence from the dataclass.
+        # multi-selectable now maps to multi_selectable on ElementStates (GW-048).
+        assert result.multi_selectable is True
+        # Extended fields that don't exist on ElementStates should be silently
+        # dropped — verify via absence from the dataclass.
         assert not hasattr(result, "focusable")
 
     def test_element_states_is_frozen(self) -> None:

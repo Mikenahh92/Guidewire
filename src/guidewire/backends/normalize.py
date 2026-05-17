@@ -156,6 +156,10 @@ def normalize_element(
     bounds: Any = None,
     raw_actions: list[str] | None = None,
     children: list[NormalizedElement] | None = None,
+    table_row: int | None = None,
+    table_column: int | None = None,
+    tree_level: int | None = None,
+    selection_state: str | None = None,
 ) -> NormalizedElement:
     """Build a :class:`NormalizedElement` from raw platform properties.
 
@@ -181,6 +185,11 @@ def normalize_element(
         bounds: Bounding rectangle as tuple ``(x, y, w, h)`` or dict.
         raw_actions: List of native action/pattern identifiers.
         children: Already-normalized child elements.
+        table_row: Zero-based row index for table cells.
+        table_column: Zero-based column index for table cells.
+        tree_level: Zero-based nesting depth for tree items.
+        selection_state: Current selection state string
+            (e.g. ``"selected"``, ``"unselected"``, ``"partial"``).
 
     Returns:
         A fully-populated :class:`NormalizedElement`.
@@ -211,4 +220,8 @@ def normalize_element(
         bounds=norm_bounds,
         actions=actions,
         children=children,
+        table_row=table_row,
+        table_column=table_column,
+        tree_level=tree_level,
+        selection_state=selection_state,
     )

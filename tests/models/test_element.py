@@ -19,6 +19,9 @@ class TestDesktopAction:
             "type",
             "set_value",
             "select",
+            "select_item",
+            "deselect_item",
+            "add_to_selection",
             "toggle",
             "expand",
             "collapse",
@@ -34,11 +37,11 @@ class TestDesktopAction:
             assert action == name
 
     def test_action_count(self) -> None:
-        """DesktopAction has exactly 13 members."""
+        """DesktopAction has exactly 16 members."""
         import typing
 
         args = typing.get_args(DesktopAction)
-        assert len(args) == 13
+        assert len(args) == 16
 
     def test_invalid_action_rejected_by_mypy(self) -> None:
         """Non-member strings are not DesktopAction at type-check time.
@@ -407,6 +410,9 @@ class TestActionCompleteness:
             "type",
             "set_value",
             "select",
+            "select_item",
+            "deselect_item",
+            "add_to_selection",
             "toggle",
             "expand",
             "collapse",
@@ -422,4 +428,4 @@ class TestActionCompleteness:
         import typing
 
         args = typing.get_args(DesktopAction)
-        assert len(args) == 13
+        assert len(args) == 16
