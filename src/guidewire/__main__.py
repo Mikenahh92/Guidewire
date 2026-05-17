@@ -4,16 +4,55 @@ Wires stdio transport so that MCP clients can communicate with the
 server over the standard input/output streams::
 
     python -m guidewire
+    python -m guidewire --backend=mock
 """
+
+import argparse
 
 from guidewire.server import GuidewireServer
 
 __all__ = ["main"]
 
 
-def main() -> None:
-    """Run the Guidewire MCP server with stdio transport."""
-    server = GuidewireServer()
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments."""
+    parser = argparse.ArgumentParser(prog="guidewire")
+    parser.add_argument(
+        "--backend",
+        choices=["mock", "auto"],
+        default="auto",
+        help="Backend to use. 'mock' uses MockBackend; 'auto' selects "
+        "platform backend (default: auto).",
+    )
+    return parser.parse_args(argv)
+
+
+def _create_backend(backend_name: str):
+    """Create the backend instance for the given name.
+
+    Args:
+        backend_name: ``"mock"`` for MockBackend, ``"auto"`` for platform.
+
+    Returns:
+        A DesktopBackend instance, or ``None`` for stub mode.
+    """
+    if backend_name == "mock":
+        from guidewire.backends import MockBackend
+
+        return MockBackend()
+    # "auto" — let GuidewireServer default to stub mode (no backend).
+    return None
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run the Guidewire MCP server with stdio transport.
+
+    Args:
+        argv: Command-line arguments (default: ``sys.argv[1:]``).
+    """
+    args = _parse_args(argv)
+    backend = _create_backend(args.backend)
+    server = GuidewireServer(backend=backend)
     server.register_tools()
     server.run()
 

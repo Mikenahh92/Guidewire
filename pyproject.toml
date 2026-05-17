@@ -30,6 +30,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
 ]
+integration = [
+    "anthropic>=0.40.0",
+]
 linux-x11 = [
     "python-xlib",
 ]
