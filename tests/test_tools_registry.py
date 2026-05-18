@@ -23,6 +23,7 @@ EXPECTED_TOOL_NAMES = [
     "desktop.type_text",
     "desktop.press_key",
     "desktop.get_text",
+    "desktop.get_tree_info",
     "desktop.clipboard_read",
     "desktop.clipboard_write",
     "desktop.get_table_info",

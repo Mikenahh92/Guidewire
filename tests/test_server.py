@@ -107,6 +107,12 @@ EXPECTED_TOOLS = [
         "optional_params": [],
     },
     {
+        "name": "desktop.get_tree_info",
+        "description_pattern": "tree",
+        "required_params": ["element_ref"],
+        "optional_params": [],
+    },
+    {
         "name": "desktop.clipboard_read",
         "description_pattern": "clipboard",
         "required_params": [],

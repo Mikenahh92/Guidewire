@@ -16,6 +16,7 @@ Tool set (architecture v2 §3.1):
     desktop.type_text      — type text into an element
     desktop.press_key      — press a keyboard key
     desktop.get_text       — get element text content
+    desktop.get_tree_info  — query tree view structure and expand/collapse state
     desktop.clipboard_read — read text from system clipboard
     desktop.clipboard_write — write text to the system clipboard
     desktop.get_table_info — read table/grid data (dimensions, headers, cells)
@@ -44,6 +45,7 @@ _TOOL_MODULES = [
     ".type_text",
     ".press_key",
     ".get_text",
+    ".get_tree_info",
     ".clipboard_read",
     ".clipboard_write",
     ".get_table_info",
@@ -51,7 +53,7 @@ _TOOL_MODULES = [
 
 # Modules whose ``register()`` accepts an optional backend argument.
 _BACKEND_TOOL_MODULES: frozenset[str] = frozenset(
-    {".list_windows", ".snapshot", ".find", ".click", ".type_text", ".press_key", ".get_text", ".clipboard_read", ".clipboard_write", ".get_table_info"}
+    {".list_windows", ".snapshot", ".find", ".click", ".type_text", ".press_key", ".get_text", ".get_tree_info", ".clipboard_read", ".clipboard_write", ".get_table_info"}
 )
 
 

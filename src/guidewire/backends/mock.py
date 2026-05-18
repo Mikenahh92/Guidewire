@@ -464,6 +464,7 @@ class MockBackend(DesktopBackend):
             "role": e.role,
             "name": e.name,
             "states": asdict(e.states),
+            "actions": [a.value for a in e.actions],
         }
 
     def is_valid(self, element: NativeHandle) -> bool:
