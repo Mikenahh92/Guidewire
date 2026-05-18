@@ -10,7 +10,7 @@ Public API re-exports:
     NativeHandle    — opaque platform handle alias (§3)
     ElementState    — 9 boolean state flags (§3.2)
     ElementBounds   — bounding rectangle dataclass (§3)
-    DesktopAction   — StrEnum of 12 supported actions (§4.3)
+    DesktopAction   — StrEnum of 16 supported actions (§4.3)
 """
 
 import sys

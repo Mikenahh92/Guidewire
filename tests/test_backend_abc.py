@@ -3,7 +3,7 @@
 Verifies that:
 - DesktopBackend cannot be instantiated directly
 - DesktopBackend is an ABC
-- All 10 canonical abstract methods are present
+- All 16 canonical abstract methods are present
 - Method signatures match the architecture v2 contract
 - A minimal concrete subclass compiles and runs
 - The ABC is properly discoverable from the package

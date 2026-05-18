@@ -70,6 +70,9 @@ class _MockElement:
     bounds: ElementBounds = field(
         default_factory=lambda: ElementBounds(x=0, y=0, width=100, height=30),
     )
+    # Table data for get_table_info support (GW-049)
+    table_headers: list[str | None] | None = None
+    table_rows: list[list[str | None]] | None = None
 
 
 # -- Unique handle factory --------------------------------------------------
@@ -225,6 +228,44 @@ class MockBackend(DesktopBackend):
         return self
 
     # -- Canonical methods ---------------------------------------------------
+    def add_table(
+        self,
+        role: str = "table",
+        name: str | None = None,
+        headers: list[str | None] | None = None,
+        rows: list[list[str | None]] | None = None,
+        parent: NativeHandle | None = None,
+    ) -> Self:
+        """Register a mock table element with headers and row data.
+
+        Args:
+            role: Normalized accessibility role (default ``"table"``).
+            name: Accessible name for the table element.
+            headers: Column header strings.
+            rows: Row data as list of lists of cell values.
+            parent: Window handle this table belongs to.
+
+        Returns:
+            ``self`` for chaining.
+        """
+        handle = _new_handle()
+        self._elements[handle] = _MockElement(
+            handle=handle,
+            role=role,
+            name=name,
+            value=None,
+            window_handle=parent,
+            parent_handle=None,
+            valid=True,
+            states=ElementState(),
+            actions=[],
+            bounds=ElementBounds(x=0, y=0, width=400, height=300),
+            table_headers=headers,
+            table_rows=rows,
+        )
+        return self
+
+    # -- Canonical 8 methods -------------------------------------------------
 
     def list_windows(self) -> list[NativeHandle]:
         """Return handles for all registered mock windows."""
@@ -321,7 +362,7 @@ class MockBackend(DesktopBackend):
         Parameter order is ``(handle, action, **kwargs)`` per architecture v2 §4.1.
         Accepts both element handles and window handles (for window-level actions
         like ``PRESS_KEY``).  Returns ``str`` when action is ``GET_TEXT``,
-        otherwise ``None``.
+        ``dict`` when action is ``GET_TABLE_INFO``, otherwise ``None``.
         """
         # Window-level actions (e.g. press_key) target window handles
         if handle in self._windows:
@@ -338,7 +379,77 @@ class MockBackend(DesktopBackend):
         self._action_log.append({"action": action, "handle": handle, "kwargs": kwargs})
         if action == DesktopAction.GET_TEXT:
             return e.value or ""
+        if action == DesktopAction.GET_TABLE_INFO:
+            return self._dispatch_table_info(e, **kwargs)
         return None
+
+    def _dispatch_table_info(self, e: _MockElement, **kwargs: Any) -> dict[str, Any]:
+        """Handle GET_TABLE_INFO dispatch for a mock table element.
+
+        Returns a plain dict response based on the ``table_action`` kwarg.
+        """
+        from guidewire.errors import ActionNotSupportedError
+
+        if e.table_headers is None and e.table_rows is None:
+            raise ActionNotSupportedError(
+                f"Element '{e.handle!r}' does not support table/grid access"
+            )
+
+        table_action = kwargs.get("table_action", "info")
+        max_rows = kwargs.get("max_rows", 100)
+        max_columns = kwargs.get("max_columns", 50)
+        row_idx = kwargs.get("row", 0)
+        col_idx = kwargs.get("column", 0)
+
+        headers = e.table_headers or []
+        rows_raw = e.table_rows or []
+        col_count = max(len(headers), max((len(r) for r in rows_raw), default=0))
+
+        if table_action == "info":
+            limited_rows = rows_raw[:max_rows]
+            header_list = headers[:max_columns]
+            result_rows: list[list[dict[str, Any]]] = []
+            for r_idx, row in enumerate(limited_rows):
+                cells: list[dict[str, Any]] = []
+                for c_idx in range(min(len(row), max_columns)):
+                    cells.append({"row": r_idx, "column": c_idx, "value": row[c_idx]})
+                result_rows.append(cells)
+            return {
+                "row_count": len(rows_raw),
+                "column_count": col_count,
+                "headers": header_list,
+                "rows": result_rows,
+            }
+        elif table_action == "read_cell":
+            if row_idx >= len(rows_raw) or col_idx >= len(rows_raw[row_idx]):
+                return {"row": row_idx, "column": col_idx, "value": None}
+            return {
+                "row": row_idx,
+                "column": col_idx,
+                "value": rows_raw[row_idx][col_idx],
+            }
+        elif table_action == "read_row":
+            if row_idx >= len(rows_raw):
+                return {"row": row_idx, "cells": []}
+            row = rows_raw[row_idx]
+            cells = [
+                {"row": row_idx, "column": c, "value": row[c]}
+                for c in range(min(len(row), max_columns))
+            ]
+            return {"row": row_idx, "cells": cells}
+        elif table_action == "read_column":
+            col_cells: list[dict[str, Any]] = []
+            for r_idx in range(min(len(rows_raw), max_rows)):
+                if col_idx < len(rows_raw[r_idx]):
+                    col_cells.append(
+                        {"row": r_idx, "column": col_idx, "value": rows_raw[r_idx][col_idx]}
+                    )
+            header = headers[col_idx] if col_idx < len(headers) else None
+            return {"column": col_idx, "header": header, "cells": col_cells}
+        else:
+            raise ActionNotSupportedError(
+                f"Unknown table_action: {table_action!r}"
+            )
 
     def get_element_info(self, handle: NativeHandle) -> dict[str, Any]:
         """Return element metadata as a dict."""

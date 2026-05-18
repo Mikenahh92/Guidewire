@@ -911,12 +911,12 @@ class TestRoleRiskMapCompleteness:
     """TC-030: ROLE_RISK_MAP has expected entry count and covers all roles."""
 
     def test_entry_count(self) -> None:
-        """ROLE_RISK_MAP should have 30 entries (25 READ_ONLY + 5 SENSITIVE)."""
-        assert len(ROLE_RISK_MAP) == 30
+        """ROLE_RISK_MAP should have 34 entries (29 READ_ONLY + 5 SENSITIVE)."""
+        assert len(ROLE_RISK_MAP) == 34
 
     def test_read_only_role_count(self) -> None:
         ro = [r for r, v in ROLE_RISK_MAP.items() if v == "READ_ONLY"]
-        assert len(ro) == 25
+        assert len(ro) == 29
 
     def test_sensitive_role_count(self) -> None:
         se = [r for r, v in ROLE_RISK_MAP.items() if v == "SENSITIVE"]

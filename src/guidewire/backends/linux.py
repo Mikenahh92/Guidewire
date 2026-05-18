@@ -711,6 +711,8 @@ class LinuxBackend(DesktopBackend):
                 return self._action_increment(accessible)
             if action == DesktopAction.DECREMENT:
                 return self._action_decrement(accessible)
+            if action == DesktopAction.GET_TABLE_INFO:
+                return self._dispatch_table_info(accessible, **kwargs)
         except (ActionNotSupportedError, StaleElementReferenceError):
             raise
         except Exception as exc:
@@ -1190,6 +1192,95 @@ class LinuxBackend(DesktopBackend):
             raise
         except Exception as exc:
             raise ElementNotFoundError(f"Failed to read element info: {exc}") from exc
+
+    def _dispatch_table_info(self, accessible: Any, **kwargs: Any) -> dict[str, Any]:
+        """Handle GET_TABLE_INFO dispatch via AT-SPI Table interface (GW-049).
+
+        Reads table data using the AT-SPI Table interface and returns a plain
+        dict based on the ``table_action`` kwarg.
+        """
+        max_rows = kwargs.get("max_rows", 100)
+        max_columns = kwargs.get("max_columns", 50)
+        table_action = kwargs.get("table_action", "info")
+        row_idx = kwargs.get("row", 0)
+        col_idx = kwargs.get("column", 0)
+
+        try:
+            table = accessible.queryTable()
+        except Exception as exc:
+            raise ActionNotSupportedError(
+                "Element does not support AT-SPI Table interface for table access"
+            ) from exc
+
+        try:
+            n_rows = int(table.nRows)
+            n_cols = int(table.nColumns)
+
+            # Read column headers
+            headers: list[str | None] = []
+            for c in range(min(n_cols, max_columns)):
+                try:
+                    header = table.getColumnHeader(c)
+                    header_name = header.get_name() if header else None
+                    headers.append(str(header_name) if header_name else None)
+                except Exception:
+                    headers.append(None)
+
+            data_start_row = 1 if any(h is not None for h in headers) else 0
+
+            def _read_cell(r: int, c: int) -> dict[str, Any]:
+                try:
+                    actual_r = r + data_start_row
+                    cell_acc = table.getAccessibleAt(actual_r, c)
+                    if cell_acc:
+                        try:
+                            text_iface = cell_acc.queryText()
+                            value = text_iface.getText(0, -1)
+                        except Exception:
+                            value = cell_acc.get_name()
+                        return {"row": r, "column": c, "value": str(value) if value else None}
+                except Exception:
+                    pass
+                return {"row": r, "column": c, "value": None}
+
+            if table_action == "info":
+                effective_rows = min(n_rows - data_start_row, max_rows)
+                result_rows: list[list[dict[str, Any]]] = []
+                for r in range(effective_rows):
+                    row_cells = [
+                        _read_cell(r, c)
+                        for c in range(min(n_cols, max_columns))
+                    ]
+                    result_rows.append(row_cells)
+                return {
+                    "row_count": n_rows - data_start_row,
+                    "column_count": n_cols,
+                    "headers": headers[:max_columns],
+                    "rows": result_rows,
+                }
+            elif table_action == "read_cell":
+                return _read_cell(row_idx, col_idx)
+            elif table_action == "read_row":
+                cells = [
+                    _read_cell(row_idx, c)
+                    for c in range(min(n_cols, max_columns))
+                ]
+                return {"row": row_idx, "cells": cells}
+            elif table_action == "read_column":
+                effective_rows = min(n_rows - data_start_row, max_rows)
+                col_cells = [_read_cell(r, col_idx) for r in range(effective_rows)]
+                header = headers[col_idx] if col_idx < len(headers) else None
+                return {"column": col_idx, "header": header, "cells": col_cells}
+            else:
+                raise ActionNotSupportedError(
+                    f"Unknown table_action: {table_action!r}"
+                )
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(
+                f"Failed to read table data via AT-SPI Table: {exc}"
+            ) from exc
 
     def is_valid(self, element: NativeHandle) -> bool:
         """Check whether a native element reference is still valid (GW-033).

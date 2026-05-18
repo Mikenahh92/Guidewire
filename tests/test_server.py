@@ -118,6 +118,12 @@ EXPECTED_TOOLS = [
         "required_params": ["text"],
         "optional_params": [],
     },
+    {
+        "name": "desktop.get_table_info",
+        "description_pattern": "table/grid data",
+        "required_params": ["element_ref"],
+        "optional_params": ["max_rows", "max_columns"],
+    },
 ]
 
 

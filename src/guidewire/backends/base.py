@@ -37,7 +37,8 @@ class DesktopBackend(ABC):
         resize_window → desktop.manage_window (action=resize)
         snapshot      → desktop.snapshot
         find_elements → desktop.find_elements
-        perform_action → desktop.perform_action
+        perform_action → desktop.perform_action (incl. GET_TABLE_INFO)
+        get_element_info → element metadata
         is_valid      → internal staleness check
         clipboard_read → desktop.clipboard_read
         clipboard_write → desktop.clipboard_write

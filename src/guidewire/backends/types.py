@@ -84,7 +84,7 @@ class ElementState:
 class DesktopAction(StrEnum):
     """Enumeration of actions that :meth:`DesktopBackend.perform_action` supports.
 
-    12 canonical variants per architecture v2 §4.3.
+    16 canonical variants per architecture v2 §4.3.
     Each value maps to one or more PRD §6 tool endpoints.
     """
 
@@ -103,3 +103,4 @@ class DesktopAction(StrEnum):
     COLLAPSE = "collapse"
     INCREMENT = "increment"
     DECREMENT = "decrement"
+    GET_TABLE_INFO = "get_table_info"

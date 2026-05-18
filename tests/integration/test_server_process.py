@@ -22,28 +22,30 @@ class TestServerProcess:
         async with GuidewireServerProcess() as server:
             assert server.session is not None
 
-    async def test_server_lists_all_eight_tools(self) -> None:
-        """Server should expose exactly 8 canonical desktop tools."""
+    async def test_server_lists_all_tools(self) -> None:
+        """Server should expose all canonical desktop tools."""
         async with GuidewireServerProcess() as server:
             tools = await server.list_tools()
             names = {t.name for t in tools}
             expected = {
                 "desktop.list_windows",
                 "desktop.focus_window",
+                "desktop.manage_window",
                 "desktop.snapshot",
                 "desktop.find",
                 "desktop.click",
                 "desktop.type_text",
                 "desktop.press_key",
                 "desktop.get_text",
+                "desktop.get_table_info",
             }
             assert names == expected
 
-    async def test_tool_count_is_eight(self) -> None:
-        """Exactly 8 tools should be registered."""
+    async def test_tool_count_is_correct(self) -> None:
+        """Exactly 10 tools should be registered."""
         async with GuidewireServerProcess() as server:
             tools = await server.list_tools()
-            assert len(tools) == 8
+            assert len(tools) == 10
 
     async def test_tool_schemas_are_valid(self) -> None:
         """Each tool should have a valid input schema."""

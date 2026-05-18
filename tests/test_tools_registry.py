@@ -1,7 +1,7 @@
 """Tests for guidewire.tools registry (GW-008).
 
 Validates that:
-- All 9 tool sub-modules exist and export a ``register`` function.
+- All tool sub-modules exist and export a ``register`` function.
 - ``register_all`` registers every tool on a FastMCP instance.
 - No ``from __future__ import annotations`` is used anywhere in the tools package.
 """
@@ -25,6 +25,7 @@ EXPECTED_TOOL_NAMES = [
     "desktop.get_text",
     "desktop.clipboard_read",
     "desktop.clipboard_write",
+    "desktop.get_table_info",
 ]
 
 
@@ -39,8 +40,8 @@ class TestToolModuleRegistry:
             f"{module_name} is missing a 'register' function"
         )
 
-    async def test_register_all_registers_nine_tools(self):
-        """register_all should register all expected tools on a FastMCP instance."""
+    async def test_register_all_registers_all_tools(self):
+        """register_all should register every expected tool on a FastMCP instance."""
         mcp = FastMCP(name="test")
         register_all(mcp)
         tools = await mcp.list_tools()
