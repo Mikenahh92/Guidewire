@@ -23,6 +23,7 @@ EXPECTED_TOOL_NAMES = [
     "desktop.type_text",
     "desktop.press_key",
     "desktop.get_text",
+    "desktop.clipboard_read",
 ]
 
 
@@ -38,7 +39,7 @@ class TestToolModuleRegistry:
         )
 
     async def test_register_all_registers_nine_tools(self):
-        """register_all should register exactly 9 tools on a FastMCP instance."""
+        """register_all should register all expected tools on a FastMCP instance."""
         mcp = FastMCP(name="test")
         register_all(mcp)
         tools = await mcp.list_tools()
@@ -46,8 +47,8 @@ class TestToolModuleRegistry:
         assert names == set(EXPECTED_TOOL_NAMES)
 
     def test_tool_module_count(self):
-        """There should be exactly 9 tool modules."""
-        assert len(_TOOL_MODULES) == 9
+        """There should be exactly the expected number of tool modules."""
+        assert len(_TOOL_MODULES) == len(EXPECTED_TOOL_NAMES)
 
 
 class TestNoFutureAnnotations:

@@ -16,6 +16,7 @@ Tool set (architecture v2 §3.1):
     desktop.type_text      — type text into an element
     desktop.press_key      — press a keyboard key
     desktop.get_text       — get element text content
+    desktop.clipboard_read — read text from system clipboard
 """
 
 import importlib
@@ -41,11 +42,12 @@ _TOOL_MODULES = [
     ".type_text",
     ".press_key",
     ".get_text",
+    ".clipboard_read",
 ]
 
 # Modules whose ``register()`` accepts an optional backend argument.
 _BACKEND_TOOL_MODULES: frozenset[str] = frozenset(
-    {".list_windows", ".snapshot", ".find", ".click", ".type_text", ".press_key", ".get_text"}
+    {".list_windows", ".snapshot", ".find", ".click", ".type_text", ".press_key", ".get_text", ".clipboard_read"}
 )
 
 

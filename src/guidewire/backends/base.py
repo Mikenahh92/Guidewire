@@ -166,6 +166,19 @@ class DesktopBackend(ABC):
         """
 
     @abstractmethod
+    def clipboard_read(self) -> str:
+        """Read text content from the system clipboard.
+
+        Returns:
+            The current text content of the OS clipboard as a string.
+
+        Raises:
+            BackendUnavailableError: If the clipboard cannot be accessed.
+
+        Maps to: ``desktop.clipboard_read`` (PRD §6).
+        """
+
+    @abstractmethod
     def is_valid(self, element: NativeHandle) -> bool:
         """Check whether a native element reference is still valid.
 

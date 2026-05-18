@@ -106,6 +106,12 @@ EXPECTED_TOOLS = [
         "required_params": ["element_ref"],
         "optional_params": [],
     },
+    {
+        "name": "desktop.clipboard_read",
+        "description_pattern": "clipboard",
+        "required_params": [],
+        "optional_params": [],
+    },
 ]
 
 
@@ -113,16 +119,16 @@ class TestToolRegistration:
     """Tests for tool stub registration and discovery."""
 
     async def test_all_nine_tools_registered(self, server):
-        """All 9 canonical tool stubs should be discoverable via list_tools."""
+        """All canonical tool stubs should be discoverable via list_tools."""
         tools = await server.mcp.list_tools()
         names = {t.name for t in tools}
         expected = {spec["name"] for spec in EXPECTED_TOOLS}
         assert names == expected
 
     async def test_tool_count(self, server):
-        """Exactly 9 tools should be registered."""
+        """Exactly the expected number of tools should be registered."""
         tools = await server.mcp.list_tools()
-        assert len(tools) == 9
+        assert len(tools) == len(EXPECTED_TOOLS)
 
     @pytest.mark.parametrize("spec", EXPECTED_TOOLS, ids=lambda s: s["name"])
     async def test_tool_has_description(self, server, spec):

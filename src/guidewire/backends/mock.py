@@ -145,6 +145,7 @@ class MockBackend(DesktopBackend):
         self._disposed: bool = False
         self._action_log: list[dict[str, Any]] = []
         self._last_window_handle: NativeHandle | None = None
+        self._clipboard_content: str = ""
 
     # -- Builder API (seed helpers, fluent) ----------------------------------
 
@@ -207,6 +208,18 @@ class MockBackend(DesktopBackend):
         """Mark an element as invalid (simulates a stale reference)."""
         if element in self._elements:
             self._elements[element].valid = False
+
+    def set_clipboard_text(self, text: str) -> Self:
+        """Set the mock clipboard content for testing.
+
+        Args:
+            text: The text to store in the mock clipboard.
+
+        Returns:
+            ``self`` for fluent chaining.
+        """
+        self._clipboard_content = text
+        return self
 
     # -- Canonical 8 methods -------------------------------------------------
 
@@ -347,6 +360,13 @@ class MockBackend(DesktopBackend):
             return False
         return self._elements[element].valid
 
+    def clipboard_read(self) -> str:
+        """Read text content from the mock clipboard.
+
+        Returns the current ``_clipboard_content`` for test assertions.
+        """
+        return self._clipboard_content
+
     # -- Window state management (GW-055) ------------------------------------
 
     def _require_window(self, window: NativeHandle) -> _MockWindow:
@@ -411,3 +431,8 @@ class MockBackend(DesktopBackend):
     def last_window_handle(self) -> NativeHandle | None:
         """Handle of the most recently added window (for fluent chaining)."""
         return self._last_window_handle
+
+    @property
+    def clipboard_content(self) -> str:
+        """Current content of the mock clipboard."""
+        return self._clipboard_content

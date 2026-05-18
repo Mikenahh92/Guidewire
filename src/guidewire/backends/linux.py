@@ -1223,6 +1223,52 @@ class LinuxBackend(DesktopBackend):
         except Exception:
             return False
 
+    def clipboard_read(self) -> str:
+        """Read text content from the system clipboard via xclip.
+
+        Uses the ``xclip`` command-line utility to read the primary clipboard
+        selection (``-selection clipboard``) as UTF-8 text.
+
+        Raises:
+            BackendUnavailableError: If xclip is not installed or the
+                clipboard cannot be read.
+        """
+        import shutil
+        import subprocess
+
+        if shutil.which("xclip") is None:
+            raise BackendUnavailableError(
+                "LinuxBackend requires 'xclip' for clipboard access "
+                "(install via: apt install xclip)"
+            )
+
+        try:
+            result = subprocess.run(
+                ["xclip", "-selection", "clipboard", "-o"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                stderr = result.stderr.strip()
+                if "target" in stderr.lower() or "convert" in stderr.lower():
+                    # No text content on clipboard
+                    return ""
+                raise BackendUnavailableError(
+                    f"xclip failed with return code {result.returncode}: {stderr}"
+                )
+            return result.stdout
+        except subprocess.TimeoutExpired as exc:
+            raise BackendUnavailableError(
+                "xclip timed out while reading the clipboard"
+            ) from exc
+        except BackendUnavailableError:
+            raise
+        except Exception as exc:
+            raise BackendUnavailableError(
+                f"Failed to read clipboard via xclip: {exc}"
+            ) from exc
+
     def dispose(self) -> None:
         """Release all resources held by this backend.
 

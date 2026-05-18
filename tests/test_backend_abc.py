@@ -54,6 +54,7 @@ class TestAbstractMethodsPresent:
             "perform_action",
             "get_element_info",
             "is_valid",
+            "clipboard_read",
             "minimize_window",
             "maximize_window",
             "restore_window",
@@ -77,7 +78,7 @@ class TestAbstractMethodsPresent:
             for name, method in inspect.getmembers(DesktopBackend, predicate=inspect.isfunction)
             if getattr(method, "__isabstractmethod__", False)
         ]
-        assert len(abstracts) == 14
+        assert len(abstracts) == 15
 
 
 # -- TC-04: list_windows signature ------------------------------------------
@@ -175,7 +176,7 @@ class TestPerformActionSignature:
 
 
 class TestMinimalSubclass:
-    """TC-10: A subclass implementing all 14 methods should be instantiable."""
+    """TC-10: A subclass implementing all 15 methods should be instantiable."""
 
     def test_subclass_instantiation(self) -> None:
         class MinimalBackend(DesktopBackend):
@@ -206,6 +207,9 @@ class TestMinimalSubclass:
 
             def is_valid(self, element) -> bool:
                 return False
+
+            def clipboard_read(self) -> str:
+                return ""
 
             def minimize_window(self, window) -> None:
                 pass

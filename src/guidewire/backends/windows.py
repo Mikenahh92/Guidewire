@@ -1311,6 +1311,45 @@ class WindowsBackend(DesktopBackend):
         except Exception:
             return False
 
+    def clipboard_read(self) -> str:
+        """Read text content from the system clipboard via ctypes Win32 API.
+
+        Uses the Win32 clipboard API (``OpenClipboard``, ``GetClipboardData``,
+        ``CloseClipboard``) via ``ctypes`` to read ``CF_UNICODETEXT`` content.
+
+        Raises:
+            BackendUnavailableError: If the clipboard cannot be opened or
+                does not contain text.
+        """
+        import ctypes
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+
+        cf_unicode_text = 13  # Win32 CF_UNICODETEXT format
+
+        if not user32.OpenClipboard(0):  # type: ignore[attr-defined]
+            raise BackendUnavailableError("Failed to open the Windows clipboard")
+
+        try:
+            handle = user32.GetClipboardData(cf_unicode_text)  # type: ignore[attr-defined]
+            if not handle:
+                # No text data on the clipboard — return empty string
+                return ""
+
+            # Lock the handle to get a pointer to the Unicode text
+            ptr = kernel32.GlobalLock(handle)  # type: ignore[attr-defined]
+            if not ptr:
+                return ""
+
+            try:
+                # Read the Unicode string (null-terminated)
+                return ctypes.c_wchar_p(ptr).value or ""
+            finally:
+                kernel32.GlobalUnlock(handle)  # type: ignore[attr-defined]
+        finally:
+            user32.CloseClipboard()  # type: ignore[attr-defined]
+
     def dispose(self) -> None:
         """Release all resources held by this backend.
 
