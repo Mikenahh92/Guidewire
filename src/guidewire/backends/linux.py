@@ -87,7 +87,7 @@ class LinuxBackend(DesktopBackend):
 
         self._desktop = pyatspi.Registry.getDesktop(0)
 
-    # -- DesktopBackend interface (9 abstract methods) -------------------------
+    # -- DesktopBackend interface (16 abstract methods) -------------------------
 
     def list_windows(self) -> list[NativeHandle]:
         """List all visible top-level application windows.
@@ -1226,8 +1226,8 @@ class LinuxBackend(DesktopBackend):
     def clipboard_read(self) -> str:
         """Read text content from the system clipboard via xclip.
 
-        Uses the ``xclip`` command-line utility to read the primary clipboard
-        selection (``-selection clipboard``) as UTF-8 text.
+        Uses the xclip command-line utility to read the primary clipboard
+        selection (-selection clipboard) as UTF-8 text.
 
         Raises:
             BackendUnavailableError: If xclip is not installed or the
@@ -1267,6 +1267,39 @@ class LinuxBackend(DesktopBackend):
         except Exception as exc:
             raise BackendUnavailableError(
                 f"Failed to read clipboard via xclip: {exc}"
+            ) from exc
+
+    def clipboard_write(self, text: str) -> None:
+        """Write text to the system clipboard using xclip.
+
+        Pipes the text to xclip -selection clipboard via subprocess.
+        Requires xclip to be installed on the system.
+
+        Args:
+            text: The text string to place on the OS clipboard.
+
+        Raises:
+            BackendUnavailableError: If xclip is not available or the
+                operation fails.
+        """
+        import subprocess
+
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=text,
+                text=True,
+                check=True,
+                capture_output=True,
+                timeout=5,
+            )
+        except FileNotFoundError:
+            raise BackendUnavailableError("xclip is not installed or not found on PATH") from None
+        except subprocess.TimeoutExpired:
+            raise BackendUnavailableError("xclip timed out while writing to clipboard") from None
+        except subprocess.CalledProcessError as exc:
+            raise BackendUnavailableError(
+                f"xclip failed with exit code {exc.returncode}: {exc.stderr}"
             ) from exc
 
     def dispose(self) -> None:

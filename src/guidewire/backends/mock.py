@@ -1,6 +1,6 @@
 """MockBackend — in-memory test double for DesktopBackend (architecture v2 §5).
 
-Provides programmable implementations of all 13 canonical synchronous methods
+Provides programmable implementations of all 16 canonical synchronous methods
 so that unit tests can exercise the MCP tool layer without a real platform
 accessibility backend.
 
@@ -209,11 +209,14 @@ class MockBackend(DesktopBackend):
         if element in self._elements:
             self._elements[element].valid = False
 
-    def set_clipboard_text(self, text: str) -> Self:
-        """Set the mock clipboard content for testing.
+    def set_clipboard(self, text: str) -> Self:
+        """Set the mock clipboard content and return ``self`` for chaining.
+
+        Fluent builder companion to :meth:`clipboard_write`.  Allows test
+        setup of initial clipboard state in a chained builder call.
 
         Args:
-            text: The text to store in the mock clipboard.
+            text: The text to pre-populate the mock clipboard with.
 
         Returns:
             ``self`` for fluent chaining.
@@ -221,7 +224,7 @@ class MockBackend(DesktopBackend):
         self._clipboard_content = text
         return self
 
-    # -- Canonical 8 methods -------------------------------------------------
+    # -- Canonical methods ---------------------------------------------------
 
     def list_windows(self) -> list[NativeHandle]:
         """Return handles for all registered mock windows."""
@@ -408,6 +411,13 @@ class MockBackend(DesktopBackend):
         w = self._require_window(window)
         w.bounds = ElementBounds(x=w.bounds.x, y=w.bounds.y, width=width, height=height)
         self._action_log.append({"action": "resize_window", "handle": window, "width": width, "height": height})
+
+    def clipboard_write(self, text: str) -> None:
+        """Write text to the mock clipboard.
+
+        Records the text in ``_clipboard_content`` for test assertions.
+        """
+        self._clipboard_content = text
 
     def dispose(self) -> None:
         """Release all mock resources."""

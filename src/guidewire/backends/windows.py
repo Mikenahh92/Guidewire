@@ -185,7 +185,7 @@ class WindowsBackend(DesktopBackend):
         )
         self._disposed: bool = False
 
-    # -- DesktopBackend interface (9 abstract methods) -------------------------
+    # -- DesktopBackend interface (16 abstract methods) -------------------------
 
     def list_windows(self) -> list[NativeHandle]:
         """List all visible top-level application windows.
@@ -278,7 +278,7 @@ class WindowsBackend(DesktopBackend):
         """
         return self._uia.ElementFromHandle(hwnd)
 
-    # -- DesktopBackend interface (9 abstract methods) -------------------------
+    # -- DesktopBackend interface (16 abstract methods) -------------------------
 
     def focus_window(self, window: NativeHandle) -> None:
         """Bring a window to the foreground.
@@ -1349,6 +1349,52 @@ class WindowsBackend(DesktopBackend):
                 kernel32.GlobalUnlock(handle)  # type: ignore[attr-defined]
         finally:
             user32.CloseClipboard()  # type: ignore[attr-defined]
+
+    def clipboard_write(self, text: str) -> None:
+        """Write text to the system clipboard using Win32 ctypes.
+
+        Opens the clipboard, clears it, sets Unicode text data via
+        ``SetClipboardData``, and closes the clipboard.
+
+        Args:
+            text: The text string to place on the OS clipboard.
+
+        Raises:
+            BackendUnavailableError: If the clipboard cannot be opened or
+                the operation fails.
+        """
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+
+        # Allocate and copy text to global memory
+        text_bytes = text.encode("utf-16-le") + b"\x00\x00"
+        h_mem = kernel32.GlobalAlloc(_CLIPBOARD_GMEM_MOVEABLE, len(text_bytes))
+        if not h_mem:
+            raise BackendUnavailableError("Failed to allocate clipboard memory")
+
+        ptr = kernel32.GlobalLock(h_mem)
+        if not ptr:
+            kernel32.GlobalFree(h_mem)
+            raise BackendUnavailableError("Failed to lock clipboard memory")
+
+        try:
+            ctypes.memmove(ptr, text_bytes, len(text_bytes))
+        finally:
+            kernel32.GlobalUnlock(h_mem)
+
+        # Open, set, and close clipboard
+        if not user32.OpenClipboard(0):
+            kernel32.GlobalFree(h_mem)
+            raise BackendUnavailableError("Failed to open clipboard")
+
+        try:
+            user32.EmptyClipboard()
+            if not user32.SetClipboardData(_CLIPBOARD_CF_UNICODETEXT, h_mem):
+                raise BackendUnavailableError("Failed to set clipboard data")
+        finally:
+            user32.CloseClipboard()
 
     def dispose(self) -> None:
         """Release all resources held by this backend.

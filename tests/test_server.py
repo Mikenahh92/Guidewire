@@ -2,7 +2,7 @@
 
 Validates that:
 - The GuidewireServer can be created without errors.
-- All 8 tool stubs are registered and discoverable via list_tools.
+- All tool stubs are registered and discoverable via list_tools.
 - Each tool has the correct name, description, and input schema.
 - The server metadata (name, instructions) is correct.
 - Tool stubs return static placeholder responses when invoked.
@@ -110,6 +110,12 @@ EXPECTED_TOOLS = [
         "name": "desktop.clipboard_read",
         "description_pattern": "clipboard",
         "required_params": [],
+        "optional_params": [],
+    },
+    {
+        "name": "desktop.clipboard_write",
+        "description_pattern": "Write text to the system clipboard",
+        "required_params": ["text"],
         "optional_params": [],
     },
 ]

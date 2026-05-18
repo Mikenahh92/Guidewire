@@ -1,7 +1,7 @@
 """Tests for guidewire.tools registry (GW-008).
 
 Validates that:
-- All 8 tool sub-modules exist and export a ``register`` function.
+- All 9 tool sub-modules exist and export a ``register`` function.
 - ``register_all`` registers every tool on a FastMCP instance.
 - No ``from __future__ import annotations`` is used anywhere in the tools package.
 """
@@ -24,6 +24,7 @@ EXPECTED_TOOL_NAMES = [
     "desktop.press_key",
     "desktop.get_text",
     "desktop.clipboard_read",
+    "desktop.clipboard_write",
 ]
 
 

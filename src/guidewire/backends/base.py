@@ -1,6 +1,6 @@
 """DesktopBackend — abstract contract for platform accessibility backends.
 
-Defines the 13 canonical synchronous methods that every platform backend
+Defines the 16 canonical synchronous methods that every platform backend
 must implement (architecture v2 §4.1).  Concrete backends (Windows UIA,
 macOS AX, Linux AT-SPI) inherit from :class:`DesktopBackend` and translate
 native accessibility APIs into the cross-platform types defined in
@@ -23,7 +23,7 @@ __all__ = [
 class DesktopBackend(ABC):
     """Abstract base class for platform accessibility backends.
 
-    Every method is synchronous.  The 13 methods form the complete contract
+    Every method is synchronous.  The 16 methods form the complete contract
     that the MCP tool layer calls.  Subclasses must implement all of them.
 
     Method mapping (architecture v2 §4.1):
@@ -39,6 +39,8 @@ class DesktopBackend(ABC):
         find_elements → desktop.find_elements
         perform_action → desktop.perform_action
         is_valid      → internal staleness check
+        clipboard_read → desktop.clipboard_read
+        clipboard_write → desktop.clipboard_write
         dispose       → resource cleanup
     """
 
@@ -253,6 +255,19 @@ class DesktopBackend(ABC):
         Raises:
             WindowNotFoundError: If the handle is invalid.
             ActionNotSupportedError: If the platform cannot resize windows.
+        """
+
+    @abstractmethod
+    def clipboard_write(self, text: str) -> None:
+        """Write text to the system clipboard.
+
+        Args:
+            text: The text string to place on the OS clipboard.
+
+        Raises:
+            BackendUnavailableError: If the clipboard cannot be accessed.
+
+        Maps to: ``desktop.clipboard_write`` (PRD §6).
         """
 
     @abstractmethod

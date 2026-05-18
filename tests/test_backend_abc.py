@@ -3,7 +3,7 @@
 Verifies that:
 - DesktopBackend cannot be instantiated directly
 - DesktopBackend is an ABC
-- All 8 canonical abstract methods are present
+- All 10 canonical abstract methods are present
 - Method signatures match the architecture v2 contract
 - A minimal concrete subclass compiles and runs
 - The ABC is properly discoverable from the package
@@ -38,11 +38,11 @@ class TestABCBase:
         assert issubclass(DesktopBackend, ABC)
 
 
-# -- TC-03: 14 abstract methods present --------------------------------------
+# -- TC-03: 16 abstract methods present --------------------------------------
 
 
 class TestAbstractMethodsPresent:
-    """TC-03: Exactly 14 abstract methods must be declared."""
+    """TC-03: Exactly 16 abstract methods must be declared."""
 
     EXPECTED_METHODS = frozenset(
         {
@@ -55,6 +55,7 @@ class TestAbstractMethodsPresent:
             "get_element_info",
             "is_valid",
             "clipboard_read",
+            "clipboard_write",
             "minimize_window",
             "maximize_window",
             "restore_window",
@@ -78,7 +79,7 @@ class TestAbstractMethodsPresent:
             for name, method in inspect.getmembers(DesktopBackend, predicate=inspect.isfunction)
             if getattr(method, "__isabstractmethod__", False)
         ]
-        assert len(abstracts) == 15
+        assert len(abstracts) == 16
 
 
 # -- TC-04: list_windows signature ------------------------------------------
@@ -176,7 +177,7 @@ class TestPerformActionSignature:
 
 
 class TestMinimalSubclass:
-    """TC-10: A subclass implementing all 15 methods should be instantiable."""
+    """TC-10: A subclass implementing all 16 methods should be instantiable."""
 
     def test_subclass_instantiation(self) -> None:
         class MinimalBackend(DesktopBackend):
@@ -210,6 +211,9 @@ class TestMinimalSubclass:
 
             def clipboard_read(self) -> str:
                 return ""
+
+            def clipboard_write(self, text: str) -> None:
+                pass
 
             def minimize_window(self, window) -> None:
                 pass
