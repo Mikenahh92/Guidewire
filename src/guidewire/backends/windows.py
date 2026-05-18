@@ -1333,6 +1333,132 @@ class WindowsBackend(DesktopBackend):
             self._com_initialized = False
         self._disposed = True
 
+    # -- Window state management (GW-055) ------------------------------------
+
+    # Win32 ShowWindow constants
+    _SW_MINIMIZE = 6
+    _SW_MAXIMIZE = 3
+    _SW_RESTORE = 9
+
+    def _require_hwnd(self, window: NativeHandle) -> int:
+        """Extract HWND from a window handle, raising on invalid handles.
+
+        Args:
+            window: Opaque native window handle (HWND integer or COM element).
+
+        Returns:
+            The integer HWND.
+
+        Raises:
+            WindowNotFoundError: If the handle does not reference a valid window.
+        """
+        import ctypes
+
+        try:
+            hwnd = self._extract_hwnd(window)
+        except TypeError as exc:
+            raise WindowNotFoundError(
+                f"Window handle is not a valid HWND: {exc}"
+            ) from exc
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        if not user32.IsWindow(hwnd):  # type: ignore[attr-defined]
+            raise WindowNotFoundError(f"Window handle {hwnd:#x} is not a valid window")
+        return hwnd
+
+    def minimize_window(self, window: NativeHandle) -> None:
+        """Minimize a window using the Win32 ShowWindow API.
+
+        Args:
+            window: Opaque native window handle.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+        """
+        import ctypes
+
+        hwnd = self._require_hwnd(window)
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        user32.ShowWindow(hwnd, self._SW_MINIMIZE)  # type: ignore[attr-defined]
+
+    def maximize_window(self, window: NativeHandle) -> None:
+        """Maximize a window using the Win32 ShowWindow API.
+
+        Args:
+            window: Opaque native window handle.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+        """
+        import ctypes
+
+        hwnd = self._require_hwnd(window)
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        user32.ShowWindow(hwnd, self._SW_MAXIMIZE)  # type: ignore[attr-defined]
+
+    def restore_window(self, window: NativeHandle) -> None:
+        """Restore a window from minimized/maximized state.
+
+        Args:
+            window: Opaque native window handle.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+        """
+        import ctypes
+
+        hwnd = self._require_hwnd(window)
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        user32.ShowWindow(hwnd, self._SW_RESTORE)  # type: ignore[attr-defined]
+
+    def move_window(self, window: NativeHandle, x: int, y: int) -> None:
+        """Move a window to the given screen coordinates.
+
+        Uses the Win32 ``MoveWindow`` API.  Preserves current width/height.
+
+        Args:
+            window: Opaque native window handle.
+            x: Target left-edge X coordinate in screen pixels.
+            y: Target top-edge Y coordinate in screen pixels.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+        """
+        import ctypes
+
+        hwnd = self._require_hwnd(window)
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        rect = ctypes.wintypes.RECT()  # type: ignore[attr-defined]
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))  # type: ignore[attr-defined]
+        width = rect.right - rect.left
+        height = rect.bottom - rect.top
+        user32.MoveWindow(  # type: ignore[attr-defined]
+            hwnd, x, y, width, height, True
+        )
+
+    def resize_window(self, window: NativeHandle, width: int, height: int) -> None:
+        """Resize a window using the Win32 MoveWindow API.
+
+        Preserves the current position.
+
+        Args:
+            window: Opaque native window handle.
+            width: Target width in pixels.
+            height: Target height in pixels.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+        """
+        import ctypes
+
+        hwnd = self._require_hwnd(window)
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        rect = ctypes.wintypes.RECT()  # type: ignore[attr-defined]
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))  # type: ignore[attr-defined]
+        user32.MoveWindow(  # type: ignore[attr-defined]
+            hwnd, rect.left, rect.top, width, height, True
+        )
+
 
 # ---------------------------------------------------------------------------
 # Module-level helpers for UIA property extraction

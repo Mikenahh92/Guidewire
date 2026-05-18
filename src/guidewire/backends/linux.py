@@ -1234,3 +1234,309 @@ class LinuxBackend(DesktopBackend):
             return
         self._desktop = None
         self._disposed = True
+
+    # -- Window state management (GW-055) ------------------------------------
+
+    def _require_accessible(self, window: NativeHandle) -> Any:
+        """Validate window handle and return the underlying accessible.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid or the accessible
+                has been destroyed.
+        """
+        accessible = self._resolve_accessible(window)
+        return accessible
+
+    def minimize_window(self, window: NativeHandle) -> None:
+        """Minimize a window using EWMH _NET_WM_STATE via python-xlib.
+
+        Falls back to iconifying via AT-SPI if xlib is unavailable.
+
+        Args:
+            window: Opaque native window handle (pyatspi.Accessible).
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If minimization fails.
+        """
+        accessible = self._require_accessible(window)
+        try:
+            self._xlib_minimize(accessible)
+            logger.debug("Minimized window via xlib: %s", window)
+            return
+        except ImportError:
+            logger.debug("python-xlib not available for minimize; trying AT-SPI iconify")
+        except Exception as exc:
+            logger.debug("xlib minimize failed: %s", exc)
+
+        raise ActionNotSupportedError(
+            "minimize_window requires python-xlib "
+            "(install via: pip install python-xlib)"
+        )
+
+    def maximize_window(self, window: NativeHandle) -> None:
+        """Maximize a window using EWMH _NET_WM_STATE via python-xlib.
+
+        Args:
+            window: Opaque native window handle (pyatspi.Accessible).
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If maximization fails.
+        """
+        accessible = self._require_accessible(window)
+        try:
+            self._xlib_maximize(accessible)
+            logger.debug("Maximized window via xlib: %s", window)
+            return
+        except ImportError:
+            logger.debug("python-xlib not available for maximize")
+        except Exception as exc:
+            logger.debug("xlib maximize failed: %s", exc)
+
+        raise ActionNotSupportedError(
+            "maximize_window requires python-xlib "
+            "(install via: pip install python-xlib)"
+        )
+
+    def restore_window(self, window: NativeHandle) -> None:
+        """Restore a window from minimized/maximized state via EWMH.
+
+        Args:
+            window: Opaque native window handle (pyatspi.Accessible).
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If restoration fails.
+        """
+        accessible = self._require_accessible(window)
+        try:
+            self._xlib_restore(accessible)
+            logger.debug("Restored window via xlib: %s", window)
+            return
+        except ImportError:
+            logger.debug("python-xlib not available for restore")
+        except Exception as exc:
+            logger.debug("xlib restore failed: %s", exc)
+
+        raise ActionNotSupportedError(
+            "restore_window requires python-xlib "
+            "(install via: pip install python-xlib)"
+        )
+
+    def move_window(self, window: NativeHandle, x: int, y: int) -> None:
+        """Move a window to the given screen coordinates via EWMH.
+
+        Args:
+            window: Opaque native window handle (pyatspi.Accessible).
+            x: Target left-edge X coordinate in screen pixels.
+            y: Target top-edge Y coordinate in screen pixels.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If moving fails.
+        """
+        accessible = self._require_accessible(window)
+        try:
+            self._xlib_move_resize(accessible, x, y, None, None)
+            logger.debug("Moved window via xlib: %s to (%d, %d)", window, x, y)
+            return
+        except ImportError:
+            logger.debug("python-xlib not available for move")
+        except Exception as exc:
+            logger.debug("xlib move failed: %s", exc)
+
+        raise ActionNotSupportedError(
+            "move_window requires python-xlib "
+            "(install via: pip install python-xlib)"
+        )
+
+    def resize_window(self, window: NativeHandle, width: int, height: int) -> None:
+        """Resize a window via EWMH.
+
+        Args:
+            window: Opaque native window handle (pyatspi.Accessible).
+            width: Target width in pixels.
+            height: Target height in pixels.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If resizing fails.
+        """
+        accessible = self._require_accessible(window)
+        try:
+            self._xlib_move_resize(accessible, None, None, width, height)
+            logger.debug("Resized window via xlib: %s to %dx%d", window, width, height)
+            return
+        except ImportError:
+            logger.debug("python-xlib not available for resize")
+        except Exception as exc:
+            logger.debug("xlib resize failed: %s", exc)
+
+        raise ActionNotSupportedError(
+            "resize_window requires python-xlib "
+            "(install via: pip install python-xlib)"
+        )
+
+    # -- xlib helpers for window state management (GW-055) -------------------
+
+    @staticmethod
+    def _get_xlib_display() -> Any:
+        """Import and return an xlib Display connection."""
+        from Xlib.display import Display  # type: ignore[import-untyped]
+
+        return Display()
+
+    @staticmethod
+    def _accessible_to_xlib_window(accessible: Any, display: Any) -> Any:
+        """Map an AT-SPI accessible to an xlib window via its application.
+
+        Uses the AT-SPI application's D-Bus path to find the X window ID,
+        then queries the X display for the corresponding window object.
+        """
+        import pyatspi
+
+        # Try to get the X window ID from the accessible's attributes
+        try:
+            attrs = accessible.getAttributes()
+            for attr in attrs:
+                if attr.startswith("xwindow:"):
+                    xid = int(attr.split(":")[1])
+                    from Xlib.xobject.drawable import Window  # type: ignore[import-untyped]
+
+                    return display.create_resource_object("window", xid)
+        except Exception:
+            pass
+
+        # Fallback: try to find window by PID using _NET_WM_PID
+        try:
+            app = accessible.getApplication()
+            pid = app.get_attributes().get("pid")
+            if pid is not None:
+                from Xlib import X  # type: ignore[import-untyped]
+
+                root = display.screen().root
+                pid_atom = display.get_atom("_NET_WM_PID", only_if_exists=True)
+                if pid_atom:
+                    for win_id in root.query_tree().children:
+                        try:
+                            win_pid = win_id.get_full_property(pid_atom, 0)
+                            if win_pid and win_pid.value[0] == int(pid):
+                                return win_id
+                        except Exception:
+                            continue
+        except Exception:
+            pass
+
+        raise ActionNotSupportedError(
+            "Could not map AT-SPI accessible to an X11 window"
+        )
+
+    @classmethod
+    def _xlib_minimize(cls, accessible: Any) -> None:
+        """Minimize (iconify) a window via xlib."""
+        display = cls._get_xlib_display()
+        try:
+            window = cls._accessible_to_xlib_window(accessible, display)
+            window.iconify()
+            display.flush()
+        finally:
+            display.close()
+
+    @classmethod
+    def _xlib_maximize(cls, accessible: Any) -> None:
+        """Maximize a window via EWMH _NET_WM_STATE."""
+        from Xlib import X  # type: ignore[import-untyped]
+        from Xlib.protocol import event  # type: ignore[import-untyped]
+
+        display = cls._get_xlib_display()
+        try:
+            window = cls._accessible_to_xlib_window(accessible, display)
+            root = display.screen().root
+
+            state_atom = display.get_atom("_NET_WM_STATE")
+            max_vert = display.get_atom("_NET_WM_STATE_MAXIMIZED_VERT")
+            max_horz = display.get_atom("_NET_WM_STATE_MAXIMIZED_HORZ")
+
+            # Send _NET_WM_STATE client message
+            client_event = event.ClientMessage(
+                window=window.id,
+                client_type=state_atom,
+                data=(32, [1, max_vert, max_horz, 0, 0]),  # _NET_WM_STATE_ADD=1
+            )
+            mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
+            root.send_event(client_event, event_mask=mask)
+            display.flush()
+        finally:
+            display.close()
+
+    @classmethod
+    def _xlib_restore(cls, accessible: Any) -> None:
+        """Restore a window from minimized/maximized state via EWMH."""
+        from Xlib import X  # type: ignore[import-untyped]
+        from Xlib.protocol import event  # type: ignore[import-untyped]
+
+        display = cls._get_xlib_display()
+        try:
+            window = cls._accessible_to_xlib_window(accessible, display)
+            root = display.screen().root
+
+            state_atom = display.get_atom("_NET_WM_STATE")
+            max_vert = display.get_atom("_NET_WM_STATE_MAXIMIZED_VERT")
+            max_horz = display.get_atom("_NET_WM_STATE_MAXIMIZED_HORZ")
+
+            # Remove maximized state
+            client_event = event.ClientMessage(
+                window=window.id,
+                client_type=state_atom,
+                data=(32, [0, max_vert, max_horz, 0, 0]),  # _NET_WM_STATE_REMOVE=0
+            )
+            mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
+            root.send_event(client_event, event_mask=mask)
+
+            # De-iconify if minimized
+            window.map()
+            display.flush()
+        finally:
+            display.close()
+
+    @classmethod
+    def _xlib_move_resize(
+        cls,
+        accessible: Any,
+        x: int | None,
+        y: int | None,
+        width: int | None,
+        height: int | None,
+    ) -> None:
+        """Move and/or resize a window via EWMH _NET_MOVERESIZE_WINDOW."""
+        from Xlib import X  # type: ignore[import-untyped]
+        from Xlib.protocol import event  # type: ignore[import-untyped]
+
+        display = cls._get_xlib_display()
+        try:
+            window = cls._accessible_to_xlib_window(accessible, display)
+            root = display.screen().root
+
+            # Get current geometry for unspecified values
+            geometry = window.get_geometry()
+            current_x = geometry.x
+            current_y = geometry.y
+            current_w = geometry.width
+            current_h = geometry.height
+
+            target_x = x if x is not None else current_x
+            target_y = y if y is not None else current_y
+            target_w = width if width is not None else current_w
+            target_h = height if height is not None else current_h
+
+            # Use configure to move/resize directly
+            window.configure(
+                x=target_x,
+                y=target_y,
+                width=target_w,
+                height=target_h,
+            )
+            display.flush()
+        finally:
+            display.close()

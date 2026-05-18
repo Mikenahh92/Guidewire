@@ -65,6 +65,12 @@ EXPECTED_TOOLS = [
         "optional_params": [],
     },
     {
+        "name": "desktop.manage_window",
+        "description_pattern": "window state",
+        "required_params": ["window_ref", "action"],
+        "optional_params": ["x", "y", "width", "height"],
+    },
+    {
         "name": "desktop.snapshot",
         "description_pattern": "accessibility snapshot",
         "required_params": ["window_ref"],
@@ -106,17 +112,17 @@ EXPECTED_TOOLS = [
 class TestToolRegistration:
     """Tests for tool stub registration and discovery."""
 
-    async def test_all_eight_tools_registered(self, server):
-        """All 8 canonical tool stubs should be discoverable via list_tools."""
+    async def test_all_nine_tools_registered(self, server):
+        """All 9 canonical tool stubs should be discoverable via list_tools."""
         tools = await server.mcp.list_tools()
         names = {t.name for t in tools}
         expected = {spec["name"] for spec in EXPECTED_TOOLS}
         assert names == expected
 
     async def test_tool_count(self, server):
-        """Exactly 8 tools should be registered."""
+        """Exactly 9 tools should be registered."""
         tools = await server.mcp.list_tools()
-        assert len(tools) == 8
+        assert len(tools) == 9
 
     @pytest.mark.parametrize("spec", EXPECTED_TOOLS, ids=lambda s: s["name"])
     async def test_tool_has_description(self, server, spec):

@@ -1,6 +1,6 @@
 """MockBackend — in-memory test double for DesktopBackend (architecture v2 §5).
 
-Provides programmable implementations of all 8 canonical synchronous methods
+Provides programmable implementations of all 13 canonical synchronous methods
 so that unit tests can exercise the MCP tool layer without a real platform
 accessibility backend.
 
@@ -50,6 +50,8 @@ class _MockWindow:
         default_factory=lambda: ElementBounds(x=0, y=0, width=800, height=600),
     )
     disposed: bool = False
+    minimized: bool = False
+    maximized: bool = False
 
 
 @dataclass(slots=True)
@@ -344,6 +346,48 @@ class MockBackend(DesktopBackend):
         if element not in self._elements:
             return False
         return self._elements[element].valid
+
+    # -- Window state management (GW-055) ------------------------------------
+
+    def _require_window(self, window: NativeHandle) -> _MockWindow:
+        """Resolve a window handle or raise WindowNotFoundError."""
+        if window not in self._windows:
+            raise WindowNotFoundError(f"Window handle {window!r} not found")
+        return self._windows[window]
+
+    def minimize_window(self, window: NativeHandle) -> None:
+        """Minimize a mock window."""
+        w = self._require_window(window)
+        w.minimized = True
+        w.maximized = False
+        w.focused = False
+        self._action_log.append({"action": "minimize_window", "handle": window})
+
+    def maximize_window(self, window: NativeHandle) -> None:
+        """Maximize a mock window."""
+        w = self._require_window(window)
+        w.maximized = True
+        w.minimized = False
+        self._action_log.append({"action": "maximize_window", "handle": window})
+
+    def restore_window(self, window: NativeHandle) -> None:
+        """Restore a mock window from minimized/maximized state."""
+        w = self._require_window(window)
+        w.minimized = False
+        w.maximized = False
+        self._action_log.append({"action": "restore_window", "handle": window})
+
+    def move_window(self, window: NativeHandle, x: int, y: int) -> None:
+        """Move a mock window to the given coordinates."""
+        w = self._require_window(window)
+        w.bounds = ElementBounds(x=x, y=y, width=w.bounds.width, height=w.bounds.height)
+        self._action_log.append({"action": "move_window", "handle": window, "x": x, "y": y})
+
+    def resize_window(self, window: NativeHandle, width: int, height: int) -> None:
+        """Resize a mock window."""
+        w = self._require_window(window)
+        w.bounds = ElementBounds(x=w.bounds.x, y=w.bounds.y, width=width, height=height)
+        self._action_log.append({"action": "resize_window", "handle": window, "width": width, "height": height})
 
     def dispose(self) -> None:
         """Release all mock resources."""

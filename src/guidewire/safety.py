@@ -243,6 +243,7 @@ SystemAction = Literal[
     "window_list",
     "window_focus",
     "window_close",
+    "window_manage",
     "system_info",
 ]
 
@@ -259,6 +260,7 @@ SYSTEM_ACTION_RISK_MAP: dict[SystemAction, RiskLevel] = {
     "window_list": "READ_ONLY",
     "window_focus": "INTERACTION",
     "window_close": "SENSITIVE",
+    "window_manage": "INTERACTION",
     "system_info": "READ_ONLY",
 }
 

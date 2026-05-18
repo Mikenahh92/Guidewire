@@ -16,6 +16,7 @@ from guidewire.tools import _TOOL_MODULES, register_all
 EXPECTED_TOOL_NAMES = [
     "desktop.list_windows",
     "desktop.focus_window",
+    "desktop.manage_window",
     "desktop.snapshot",
     "desktop.find",
     "desktop.click",
@@ -36,8 +37,8 @@ class TestToolModuleRegistry:
             f"{module_name} is missing a 'register' function"
         )
 
-    async def test_register_all_registers_eight_tools(self):
-        """register_all should register exactly 8 tools on a FastMCP instance."""
+    async def test_register_all_registers_nine_tools(self):
+        """register_all should register exactly 9 tools on a FastMCP instance."""
         mcp = FastMCP(name="test")
         register_all(mcp)
         tools = await mcp.list_tools()
@@ -45,8 +46,8 @@ class TestToolModuleRegistry:
         assert names == set(EXPECTED_TOOL_NAMES)
 
     def test_tool_module_count(self):
-        """There should be exactly 8 tool modules."""
-        assert len(_TOOL_MODULES) == 8
+        """There should be exactly 9 tool modules."""
+        assert len(_TOOL_MODULES) == 9
 
 
 class TestNoFutureAnnotations:

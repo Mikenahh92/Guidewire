@@ -9,6 +9,7 @@ Tool set (architecture v2 §3.1):
 
     desktop.list_windows   — list visible windows
     desktop.focus_window   — bring a window to the foreground
+    desktop.manage_window  — window state management (minimize, maximize, restore, move, resize)
     desktop.snapshot       — capture accessibility tree
     desktop.find           — find elements by role/name
     desktop.click          — click an element
@@ -33,6 +34,7 @@ __all__ = ["register_all"]
 _TOOL_MODULES = [
     ".list_windows",
     ".focus_window",
+    ".manage_window",
     ".snapshot",
     ".find",
     ".click",

@@ -5,7 +5,7 @@ platform backend must implement.  A :class:`MockBackend` test double is provided
 for unit testing without a real platform backend.
 
 Public API re-exports:
-    DesktopBackend  — ABC with 8 canonical synchronous methods (§4.1)
+    DesktopBackend  — ABC with 13 canonical synchronous methods (§4.1)
     MockBackend     — in-memory test double with fluent builder API (§5)
     NativeHandle    — opaque platform handle alias (§3)
     ElementState    — 9 boolean state flags (§3.2)

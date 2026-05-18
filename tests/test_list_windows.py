@@ -205,14 +205,14 @@ class TestListWindowsServerIntegration:
         assert "window" in tool.description.lower()
 
     async def test_server_without_backend_still_registers_all_tools(self, stub_server):
-        """All 8 tools should be registered even without a backend."""
+        """All 9 tools should be registered even without a backend."""
         tools = await stub_server.mcp.list_tools()
-        assert len(tools) == 8
+        assert len(tools) == 9
 
     async def test_server_with_backend_registers_all_tools(self, server):
-        """All 8 tools should be registered with a backend."""
+        """All 9 tools should be registered with a backend."""
         tools = await server.mcp.list_tools()
-        assert len(tools) == 8
+        assert len(tools) == 9
 
 
 # -- Error handling tests -----------------------------------------------------

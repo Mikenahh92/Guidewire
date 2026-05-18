@@ -7,7 +7,7 @@ Usage::
 
     async with GuidewireServerProcess() as server:
         tools = await server.list_tools()
-        assert len(tools) == 8
+        assert len(tools) == 9
 """
 
 import asyncio

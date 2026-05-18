@@ -1,6 +1,6 @@
 """DesktopBackend — abstract contract for platform accessibility backends.
 
-Defines the 8 canonical synchronous methods that every platform backend
+Defines the 13 canonical synchronous methods that every platform backend
 must implement (architecture v2 §4.1).  Concrete backends (Windows UIA,
 macOS AX, Linux AT-SPI) inherit from :class:`DesktopBackend` and translate
 native accessibility APIs into the cross-platform types defined in
@@ -23,13 +23,18 @@ __all__ = [
 class DesktopBackend(ABC):
     """Abstract base class for platform accessibility backends.
 
-    Every method is synchronous.  The 8 methods form the complete contract
+    Every method is synchronous.  The 13 methods form the complete contract
     that the MCP tool layer calls.  Subclasses must implement all of them.
 
     Method mapping (architecture v2 §4.1):
         list_windows  → desktop.list_windows
         get_window_info → desktop.get_window_info
         focus_window  → desktop.focus_window
+        minimize_window → desktop.manage_window (action=minimize)
+        maximize_window → desktop.manage_window (action=maximize)
+        restore_window → desktop.manage_window (action=restore)
+        move_window   → desktop.manage_window (action=move)
+        resize_window → desktop.manage_window (action=resize)
         snapshot      → desktop.snapshot
         find_elements → desktop.find_elements
         perform_action → desktop.perform_action
@@ -169,6 +174,72 @@ class DesktopBackend(ABC):
 
         Returns:
             ``True`` if the element still exists in the accessibility tree.
+        """
+
+    # -- Window state management (GW-055) ------------------------------------
+
+    @abstractmethod
+    def minimize_window(self, window: NativeHandle) -> None:
+        """Minimize a window to the taskbar / dock.
+
+        Args:
+            window: Opaque native window handle.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If the platform cannot minimize.
+        """
+
+    @abstractmethod
+    def maximize_window(self, window: NativeHandle) -> None:
+        """Maximize a window to fill the screen.
+
+        Args:
+            window: Opaque native window handle.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If the platform cannot maximize.
+        """
+
+    @abstractmethod
+    def restore_window(self, window: NativeHandle) -> None:
+        """Restore a window from minimized/maximized state.
+
+        Args:
+            window: Opaque native window handle.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If the platform cannot restore.
+        """
+
+    @abstractmethod
+    def move_window(self, window: NativeHandle, x: int, y: int) -> None:
+        """Move a window to the given screen coordinates.
+
+        Args:
+            window: Opaque native window handle.
+            x: Target left-edge X coordinate in screen pixels.
+            y: Target top-edge Y coordinate in screen pixels.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If the platform cannot move windows.
+        """
+
+    @abstractmethod
+    def resize_window(self, window: NativeHandle, width: int, height: int) -> None:
+        """Resize a window.
+
+        Args:
+            window: Opaque native window handle.
+            width: Target width in pixels.
+            height: Target height in pixels.
+
+        Raises:
+            WindowNotFoundError: If the handle is invalid.
+            ActionNotSupportedError: If the platform cannot resize windows.
         """
 
     @abstractmethod

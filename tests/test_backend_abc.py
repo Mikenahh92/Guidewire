@@ -38,11 +38,11 @@ class TestABCBase:
         assert issubclass(DesktopBackend, ABC)
 
 
-# -- TC-03: 8 abstract methods present --------------------------------------
+# -- TC-03: 14 abstract methods present --------------------------------------
 
 
 class TestAbstractMethodsPresent:
-    """TC-03: Exactly 9 abstract methods must be declared."""
+    """TC-03: Exactly 14 abstract methods must be declared."""
 
     EXPECTED_METHODS = frozenset(
         {
@@ -54,6 +54,11 @@ class TestAbstractMethodsPresent:
             "perform_action",
             "get_element_info",
             "is_valid",
+            "minimize_window",
+            "maximize_window",
+            "restore_window",
+            "move_window",
+            "resize_window",
             "dispose",
         }
     )
@@ -72,7 +77,7 @@ class TestAbstractMethodsPresent:
             for name, method in inspect.getmembers(DesktopBackend, predicate=inspect.isfunction)
             if getattr(method, "__isabstractmethod__", False)
         ]
-        assert len(abstracts) == 9
+        assert len(abstracts) == 14
 
 
 # -- TC-04: list_windows signature ------------------------------------------
@@ -170,7 +175,7 @@ class TestPerformActionSignature:
 
 
 class TestMinimalSubclass:
-    """TC-10: A subclass implementing all 9 methods should be instantiable."""
+    """TC-10: A subclass implementing all 14 methods should be instantiable."""
 
     def test_subclass_instantiation(self) -> None:
         class MinimalBackend(DesktopBackend):
@@ -201,6 +206,21 @@ class TestMinimalSubclass:
 
             def is_valid(self, element) -> bool:
                 return False
+
+            def minimize_window(self, window) -> None:
+                pass
+
+            def maximize_window(self, window) -> None:
+                pass
+
+            def restore_window(self, window) -> None:
+                pass
+
+            def move_window(self, window, x, y) -> None:
+                pass
+
+            def resize_window(self, window, width, height) -> None:
+                pass
 
             def dispose(self) -> None:
                 pass
