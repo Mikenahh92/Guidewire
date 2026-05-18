@@ -508,6 +508,87 @@ class TestPerformAction:
         assert result is None
         accessible.queryAction.return_value.do_action.assert_called_once_with("select")
 
+    # -- SELECT_ITEM action (GW-051) ------------------------------------------
+
+    def test_select_item_uses_selection_interface(self, backend: LinuxBackend) -> None:
+        """SELECT_ITEM uses querySelection().selectChild(getIndexInParent())."""
+        accessible = MagicMock()
+        mock_selection = MagicMock()
+        accessible.querySelection.return_value = mock_selection
+        accessible.getIndexInParent.return_value = 2
+
+        result = backend.perform_action(
+            NativeHandle(accessible), DesktopAction.SELECT_ITEM
+        )
+        assert result is None
+        accessible.querySelection.assert_called_once()
+        accessible.getIndexInParent.assert_called_once()
+        mock_selection.selectChild.assert_called_once_with(2)
+
+    def test_select_item_no_selection_interface_raises(self, backend: LinuxBackend) -> None:
+        """SELECT_ITEM raises ActionNotSupportedError when Selection interface unavailable."""
+        accessible = MagicMock()
+        accessible.querySelection.side_effect = Exception("no Selection interface")
+
+        with pytest.raises(ActionNotSupportedError, match="Selection"):
+            backend.perform_action(
+                NativeHandle(accessible), DesktopAction.SELECT_ITEM
+            )
+
+    # -- DESELECT_ITEM action (GW-051) ----------------------------------------
+
+    def test_deselect_item_uses_selection_interface(self, backend: LinuxBackend) -> None:
+        """DESELECT_ITEM uses querySelection().deselectChild(getIndexInParent())."""
+        accessible = MagicMock()
+        mock_selection = MagicMock()
+        accessible.querySelection.return_value = mock_selection
+        accessible.getIndexInParent.return_value = 3
+
+        result = backend.perform_action(
+            NativeHandle(accessible), DesktopAction.DESELECT_ITEM
+        )
+        assert result is None
+        accessible.querySelection.assert_called_once()
+        accessible.getIndexInParent.assert_called_once()
+        mock_selection.deselectChild.assert_called_once_with(3)
+
+    def test_deselect_item_no_selection_interface_raises(self, backend: LinuxBackend) -> None:
+        """DESELECT_ITEM raises ActionNotSupportedError when Selection interface unavailable."""
+        accessible = MagicMock()
+        accessible.querySelection.side_effect = Exception("no Selection interface")
+
+        with pytest.raises(ActionNotSupportedError, match="Selection"):
+            backend.perform_action(
+                NativeHandle(accessible), DesktopAction.DESELECT_ITEM
+            )
+
+    # -- ADD_TO_SELECTION action (GW-051) -------------------------------------
+
+    def test_add_to_selection_uses_selection_interface(self, backend: LinuxBackend) -> None:
+        """ADD_TO_SELECTION uses querySelection().selectChild(getIndexInParent())."""
+        accessible = MagicMock()
+        mock_selection = MagicMock()
+        accessible.querySelection.return_value = mock_selection
+        accessible.getIndexInParent.return_value = 5
+
+        result = backend.perform_action(
+            NativeHandle(accessible), DesktopAction.ADD_TO_SELECTION
+        )
+        assert result is None
+        accessible.querySelection.assert_called_once()
+        accessible.getIndexInParent.assert_called_once()
+        mock_selection.selectChild.assert_called_once_with(5)
+
+    def test_add_to_selection_no_selection_interface_raises(self, backend: LinuxBackend) -> None:
+        """ADD_TO_SELECTION raises ActionNotSupportedError when Selection interface unavailable."""
+        accessible = MagicMock()
+        accessible.querySelection.side_effect = Exception("no Selection interface")
+
+        with pytest.raises(ActionNotSupportedError, match="Selection"):
+            backend.perform_action(
+                NativeHandle(accessible), DesktopAction.ADD_TO_SELECTION
+            )
+
     # -- SCROLL action --------------------------------------------------------
 
     def test_scroll_via_scroll_action(self, backend: LinuxBackend) -> None:

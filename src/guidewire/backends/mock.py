@@ -381,6 +381,14 @@ class MockBackend(DesktopBackend):
             return e.value or ""
         if action == DesktopAction.GET_TABLE_INFO:
             return self._dispatch_table_info(e, **kwargs)
+        if action == DesktopAction.SELECT:
+            return None
+        if action == DesktopAction.SELECT_ITEM:
+            return None
+        if action == DesktopAction.DESELECT_ITEM:
+            return None
+        if action == DesktopAction.ADD_TO_SELECTION:
+            return None
         return None
 
     def _dispatch_table_info(self, e: _MockElement, **kwargs: Any) -> dict[str, Any]:

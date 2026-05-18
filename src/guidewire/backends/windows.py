@@ -679,6 +679,9 @@ class WindowsBackend(DesktopBackend):
           or ``SendInput`` keyboard simulation
         - ``SET_VALUE`` → ``IUIAutomationValuePattern.SetValue()``
         - ``SELECT`` → ``IUIAutomationSelectionItemPattern.Select()``
+        - ``SELECT_ITEM`` → ``IUIAutomationSelectionItemPattern.Select()``
+        - ``DESELECT_ITEM`` → ``IUIAutomationSelectionItemPattern.RemoveFromSelection()``
+        - ``ADD_TO_SELECTION`` → ``IUIAutomationSelectionItemPattern.AddToSelection()``
         - ``SCROLL`` → ``IUIAutomationScrollPattern.Scroll()``
         - ``GET_TEXT`` → ``IUIAutomationValuePattern.CurrentValue``
         - ``TOGGLE`` → ``IUIAutomationTogglePattern.Toggle()``
@@ -722,6 +725,12 @@ class WindowsBackend(DesktopBackend):
                 return self._action_set_value(element, **kwargs)
             if action == DesktopAction.SELECT:
                 return self._action_select(element)
+            if action == DesktopAction.SELECT_ITEM:
+                return self._action_select_item(element)
+            if action == DesktopAction.DESELECT_ITEM:
+                return self._action_deselect_item(element)
+            if action == DesktopAction.ADD_TO_SELECTION:
+                return self._action_add_to_selection(element)
             if action == DesktopAction.SCROLL:
                 return self._action_scroll(element, **kwargs)
             if action == DesktopAction.GET_TEXT:
@@ -948,6 +957,60 @@ class WindowsBackend(DesktopBackend):
             raise
         except Exception as exc:
             raise ActionNotSupportedError(f"Select failed: {exc}") from exc
+
+    def _action_select_item(self, element: Any) -> None:
+        """Select an item via SelectionItemPattern.Select().
+
+        Same underlying pattern as SELECT but exposed as SELECT_ITEM for
+        multi-select containers that distinguish single-item selection.
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If SelectionItemPattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_SELECTION_ITEM_PATTERN_ID)
+        try:
+            pattern.Select()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"SelectItem failed: {exc}") from exc
+
+    def _action_deselect_item(self, element: Any) -> None:
+        """Deselect an item via SelectionItemPattern.RemoveFromSelection().
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If SelectionItemPattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_SELECTION_ITEM_PATTERN_ID)
+        try:
+            pattern.RemoveFromSelection()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"DeselectItem failed: {exc}") from exc
+
+    def _action_add_to_selection(self, element: Any) -> None:
+        """Add an item to the current selection via SelectionItemPattern.AddToSelection().
+
+        Args:
+            element: COM ``IUIAutomationElement``.
+
+        Raises:
+            ActionNotSupportedError: If SelectionItemPattern is not available.
+        """
+        pattern = self._get_pattern(element, _UIA_SELECTION_ITEM_PATTERN_ID)
+        try:
+            pattern.AddToSelection()
+        except ActionNotSupportedError:
+            raise
+        except Exception as exc:
+            raise ActionNotSupportedError(f"AddToSelection failed: {exc}") from exc
 
     def _action_scroll(self, element: Any, **kwargs: Any) -> None:
         """Scroll an element via ScrollPattern.

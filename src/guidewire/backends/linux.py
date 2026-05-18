@@ -655,6 +655,9 @@ class LinuxBackend(DesktopBackend):
         - ``PRESS_KEY`` → ``grabFocus()`` then pynput keyboard simulation
         - ``SET_VALUE`` → ``Action.doAction('edit')`` with value parameter
         - ``SELECT`` → AT-SPI ``Action.doAction('select')``
+        - ``SELECT_ITEM`` → AT-SPI ``Selection.selectChild(getIndexInParent())``
+        - ``DESELECT_ITEM`` → AT-SPI ``Selection.deselectChild(getIndexInParent())``
+        - ``ADD_TO_SELECTION`` → AT-SPI ``Selection.selectChild(getIndexInParent())``
         - ``SCROLL`` → AT-SPI ``Action.doAction('scroll')``
         - ``GET_TEXT`` → ``Accessible.get_text()`` via Text interface
         - ``TOGGLE`` → AT-SPI ``Action.doAction('toggle')``
@@ -697,6 +700,12 @@ class LinuxBackend(DesktopBackend):
                 return self._action_set_value(accessible, **kwargs)
             if action == DesktopAction.SELECT:
                 return self._action_select(accessible)
+            if action == DesktopAction.SELECT_ITEM:
+                return self._action_select_item(accessible)
+            if action == DesktopAction.DESELECT_ITEM:
+                return self._action_deselect_item(accessible)
+            if action == DesktopAction.ADD_TO_SELECTION:
+                return self._action_add_to_selection(accessible)
             if action == DesktopAction.SCROLL:
                 return self._action_scroll(accessible)
             if action == DesktopAction.GET_TEXT:
@@ -911,6 +920,85 @@ class LinuxBackend(DesktopBackend):
             ActionNotSupportedError: If select action is not available.
         """
         self._do_action_by_name(accessible, "select")
+
+    def _action_select_item(self, accessible: Any) -> None:
+        """Select an item via the AT-SPI Selection interface.
+
+        Resolves the child index via ``getIndexInParent()`` and calls
+        ``querySelection().selectChild(index)`` per Architecture Decision 1.
+
+        Args:
+            accessible: A ``pyatspi.Accessible`` object.
+
+        Raises:
+            ActionNotSupportedError: If the Selection interface is not available.
+        """
+        try:
+            selection = accessible.querySelection()
+        except Exception:
+            raise ActionNotSupportedError(
+                "Element does not support the AT-SPI Selection interface"
+            ) from None
+        try:
+            index = accessible.getIndexInParent()
+            selection.selectChild(index)
+        except Exception as exc:
+            raise ActionNotSupportedError(
+                f"selectChild failed: {exc}"
+            ) from exc
+
+    def _action_deselect_item(self, accessible: Any) -> None:
+        """Deselect an item via the AT-SPI Selection interface.
+
+        Resolves the child index via ``getIndexInParent()`` and calls
+        ``querySelection().deselectChild(index)`` per Architecture Decision 1.
+
+        Args:
+            accessible: A ``pyatspi.Accessible`` object.
+
+        Raises:
+            ActionNotSupportedError: If the Selection interface is not available.
+        """
+        try:
+            selection = accessible.querySelection()
+        except Exception:
+            raise ActionNotSupportedError(
+                "Element does not support the AT-SPI Selection interface"
+            ) from None
+        try:
+            index = accessible.getIndexInParent()
+            selection.deselectChild(index)
+        except Exception as exc:
+            raise ActionNotSupportedError(
+                f"deselectChild failed: {exc}"
+            ) from exc
+
+    def _action_add_to_selection(self, accessible: Any) -> None:
+        """Add an item to the current selection via the AT-SPI Selection interface.
+
+        Resolves the child index via ``getIndexInParent()`` and calls
+        ``querySelection().selectChild(index)`` per Architecture Decision 1.
+        Unlike ``_action_select_item``, this does not clear the existing selection.
+
+        Args:
+            accessible: A ``pyatspi.Accessible`` object.
+
+        Raises:
+            ActionNotSupportedError: If the Selection interface is not available.
+        """
+        try:
+            selection = accessible.querySelection()
+        except Exception:
+            raise ActionNotSupportedError(
+                "Element does not support the AT-SPI Selection interface"
+            ) from None
+        try:
+            index = accessible.getIndexInParent()
+            selection.selectChild(index)
+        except Exception as exc:
+            raise ActionNotSupportedError(
+                f"selectChild (add-to-selection) failed: {exc}"
+            ) from exc
 
     def _action_scroll(self, accessible: Any) -> None:
         """Scroll an element via AT-SPI action.

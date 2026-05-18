@@ -53,7 +53,19 @@ _TOOL_MODULES = [
 
 # Modules whose ``register()`` accepts an optional backend argument.
 _BACKEND_TOOL_MODULES: frozenset[str] = frozenset(
-    {".list_windows", ".snapshot", ".find", ".click", ".type_text", ".press_key", ".get_text", ".get_tree_info", ".clipboard_read", ".clipboard_write", ".get_table_info"}
+    {
+        ".list_windows",
+        ".snapshot",
+        ".find",
+        ".click",
+        ".type_text",
+        ".press_key",
+        ".get_text",
+        ".get_tree_info",
+        ".clipboard_read",
+        ".clipboard_write",
+        ".get_table_info",
+    }
 )
 
 
