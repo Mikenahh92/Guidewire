@@ -1583,6 +1583,126 @@ class WindowsBackend(DesktopBackend):
     _SW_MAXIMIZE = 3
     _SW_RESTORE = 9
 
+    # UIA pattern IDs for virtual list support (GW-052)
+    _UIA_ITEM_CONTAINER_PATTERN_ID = 10019  # UIA_ItemContainerPatternId
+    _UIA_VIRTUALIZED_ITEM_PATTERN_ID = 10020  # UIA_VirtualizedItemPatternId
+
+    def scroll_to_item(
+        self,
+        container: NativeHandle,
+        *,
+        item_name: str | None = None,
+        item_index: int | None = None,
+        max_retries: int = 10,
+    ) -> NativeHandle | None:
+        """Scroll a virtualized list to bring an item into view (GW-052).
+
+        Uses UIA ``ItemContainerPattern.FindItemByProperty`` to locate the
+        item by name, then ``VirtualizedItemPattern.Realize()`` to materialize
+        it.  Falls back to a scroll-and-probe approach when the container
+        does not support ``ItemContainerPattern``.
+
+        Args:
+            container: Native handle for the list/container element.
+            item_name: Accessible name of the target item (case-insensitive
+                substring match).
+            item_index: Zero-based index of the target item.
+            max_retries: Max scroll iterations for fallback.
+
+        Returns:
+            Native handle for the found item, or ``None``.
+
+        Raises:
+            ElementNotFoundError: If the container is invalid.
+            ActionNotSupportedError: If the container does not support
+                virtualization patterns or scrolling.
+        """
+        if self._disposed:
+            raise StaleElementReferenceError("WindowsBackend has been disposed")
+
+        element = self._unwrap_element(container)
+
+        if item_name is None and item_index is None:
+            raise ActionNotSupportedError(
+                "scroll_to_item requires either item_name or item_index"
+            )
+
+        # --- Primary path: ItemContainerPattern.FindItemByProperty ---
+        try:
+            ic_pattern = element.GetCurrentPattern(self._UIA_ITEM_CONTAINER_PATTERN_ID)
+            if ic_pattern is not None:
+                # UIA_PropertyId_UIA_NamePropertyId = 30005
+                found = ic_pattern.FindItemByProperty(0, 30005, item_name)
+                if found is not None:
+                    # Realize the virtualized item
+                    try:
+                        vi_pattern = found.GetCurrentPattern(
+                            self._UIA_VIRTUALIZED_ITEM_PATTERN_ID
+                        )
+                        if vi_pattern is not None:
+                            vi_pattern.Realize()
+                    except Exception:
+                        pass
+                    return NativeHandle(found)
+        except ActionNotSupportedError:
+            raise
+        except Exception:
+            logger.debug("ItemContainerPattern lookup failed, trying scroll fallback")
+
+        # --- Fallback: scroll-and-probe approach ---
+        # Try using ScrollPattern to scroll down and find the item
+        for attempt in range(max_retries):
+            # Walk visible children looking for the target
+            walker = self._get_tree_walker()
+            try:
+                child = walker.GetFirstChildElement(element)
+                visible_index = 0
+                while child is not None:
+                    try:
+                        child_name = child.CurrentName
+                        if item_name is not None and child_name is not None:
+                            if item_name.lower() in child_name.lower():
+                                # Found by name
+                                try:
+                                    vi_pattern = child.GetCurrentPattern(
+                                        self._UIA_VIRTUALIZED_ITEM_PATTERN_ID
+                                    )
+                                    if vi_pattern is not None:
+                                        vi_pattern.Realize()
+                                except Exception:
+                                    pass
+                                return NativeHandle(child)
+                        if item_index is not None and visible_index == item_index:
+                            try:
+                                vi_pattern = child.GetCurrentPattern(
+                                    self._UIA_VIRTUALIZED_ITEM_PATTERN_ID
+                                )
+                                if vi_pattern is not None:
+                                    vi_pattern.Realize()
+                            except Exception:
+                                pass
+                            return NativeHandle(child)
+                        visible_index += 1
+                    except Exception:
+                        pass
+                    child = walker.GetNextSiblingElement(child)
+            except Exception:
+                logger.debug("Error scanning visible children, attempt %d", attempt)
+
+            # Scroll down to reveal more items
+            try:
+                scroll_pattern = element.GetCurrentPattern(_UIA_SCROLL_PATTERN_ID)
+                if scroll_pattern is not None:
+                    # ScrollAmount_LargeIncrement = 4
+                    scroll_pattern.ScrollVertical(4)
+                else:
+                    break  # No scroll capability, can't continue
+            except Exception:
+                logger.debug("Scroll failed on attempt %d", attempt)
+                break
+
+        return None
+
     def _require_hwnd(self, window: NativeHandle) -> int:
         """Extract HWND from a window handle, raising on invalid handles.
 

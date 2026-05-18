@@ -539,6 +539,76 @@ class MockBackend(DesktopBackend):
         """
         self._clipboard_content = text
 
+    def scroll_to_item(
+        self,
+        container: NativeHandle,
+        *,
+        item_name: str | None = None,
+        item_index: int | None = None,
+        max_retries: int = 10,
+    ) -> NativeHandle | None:
+        """Scroll a mock virtualized list to find and return a target item (GW-052).
+
+        Searches through all mock elements belonging to the same window as
+        *container* for an element matching *item_name* or *item_index*.
+
+        Returns:
+            Native handle for the found item, or ``None``.
+
+        Raises:
+            ElementNotFoundError: If the container handle is invalid.
+            ActionNotSupportedError: If neither item_name nor item_index is provided.
+        """
+        from guidewire.errors import ActionNotSupportedError, StaleElementReferenceError
+
+        if container not in self._elements and container not in self._windows:
+            raise ElementNotFoundError(f"Container handle {container!r} not found")
+
+        if container in self._elements and not self._elements[container].valid:
+            raise StaleElementReferenceError(f"Container handle {container!r} is stale")
+
+        if item_name is None and item_index is None:
+            raise ActionNotSupportedError(
+                "scroll_to_item requires either item_name or item_index"
+            )
+
+        # Find the window for this container
+        window_handle = None
+        if container in self._elements:
+            window_handle = self._elements[container].window_handle
+        elif container in self._windows:
+            window_handle = container
+
+        # Search all elements in the same window
+        candidates = [
+            e
+            for e in self._elements.values()
+            if e.valid
+            and e.window_handle == window_handle
+            and e.handle != container
+        ]
+
+        for idx, elem in enumerate(candidates):
+            if item_name is not None:
+                if elem.name is not None and item_name.lower() in elem.name.lower():
+                    self._action_log.append({
+                        "action": "scroll_to_item",
+                        "container": container,
+                        "found": elem.handle,
+                        "match": "name",
+                    })
+                    return elem.handle
+            if item_index is not None and idx == item_index:
+                self._action_log.append({
+                    "action": "scroll_to_item",
+                    "container": container,
+                    "found": elem.handle,
+                    "match": "index",
+                })
+                return elem.handle
+
+        return None
+
     def dispose(self) -> None:
         """Release all mock resources."""
         self._disposed = True

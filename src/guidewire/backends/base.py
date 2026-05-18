@@ -192,6 +192,41 @@ class DesktopBackend(ABC):
             ``True`` if the element still exists in the accessibility tree.
         """
 
+    @abstractmethod
+    def scroll_to_item(
+        self,
+        container: NativeHandle,
+        *,
+        item_name: str | None = None,
+        item_index: int | None = None,
+        max_retries: int = 10,
+    ) -> NativeHandle | None:
+        """Scroll a virtualized list container to bring a target item into view.
+
+        On Windows, uses UIA ``ItemContainerPattern.FindItemByProperty``
+        followed by ``VirtualizedItemPattern.Realize()`` to materialize
+        off-screen items.  On Linux, uses a best-effort scroll-and-retry
+        approach.
+
+        Args:
+            container: Opaque native handle for the list/container element.
+            item_name: Accessible name of the target item (case-insensitive
+                substring match).
+            item_index: Zero-based index of the target item within the
+                container.
+            max_retries: Maximum scroll iterations before giving up
+                (Linux best-effort, default 10).
+
+        Returns:
+            A native handle for the now-visible item, or ``None`` if the
+            item could not be found.
+
+        Raises:
+            ElementNotFoundError: If the container handle is invalid.
+            ActionNotSupportedError: If the container does not support
+                virtualization or scrolling.
+        """
+
     # -- Window state management (GW-055) ------------------------------------
 
     @abstractmethod

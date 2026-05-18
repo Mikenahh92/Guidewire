@@ -56,6 +56,7 @@ class TestAbstractMethodsPresent:
             "is_valid",
             "clipboard_read",
             "clipboard_write",
+            "scroll_to_item",
             "minimize_window",
             "maximize_window",
             "restore_window",
@@ -79,7 +80,7 @@ class TestAbstractMethodsPresent:
             for name, method in inspect.getmembers(DesktopBackend, predicate=inspect.isfunction)
             if getattr(method, "__isabstractmethod__", False)
         ]
-        assert len(abstracts) == 16
+        assert len(abstracts) == 17
 
 
 # -- TC-04: list_windows signature ------------------------------------------
@@ -208,6 +209,9 @@ class TestMinimalSubclass:
 
             def is_valid(self, element) -> bool:
                 return False
+
+            def scroll_to_item(self, container, *, item_name=None, item_index=None, max_retries=10):
+                return None
 
             def clipboard_read(self) -> str:
                 return ""

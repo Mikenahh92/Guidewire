@@ -130,6 +130,12 @@ EXPECTED_TOOLS = [
         "required_params": ["element_ref"],
         "optional_params": ["max_rows", "max_columns"],
     },
+    {
+        "name": "desktop.scroll_to_item",
+        "description_pattern": "virtualized list",
+        "required_params": ["container_ref"],
+        "optional_params": ["item_name", "item_index", "max_retries"],
+    },
 ]
 
 

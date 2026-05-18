@@ -20,6 +20,7 @@ Tool set (architecture v2 §3.1):
     desktop.clipboard_read — read text from system clipboard
     desktop.clipboard_write — write text to the system clipboard
     desktop.get_table_info — read table/grid data (dimensions, headers, cells)
+    desktop.scroll_to_item — scroll a virtualized list to bring a target item into view
 """
 
 import importlib
@@ -49,6 +50,7 @@ _TOOL_MODULES = [
     ".clipboard_read",
     ".clipboard_write",
     ".get_table_info",
+    ".scroll_to_item",
 ]
 
 # Modules whose ``register()`` accepts an optional backend argument.
@@ -65,6 +67,7 @@ _BACKEND_TOOL_MODULES: frozenset[str] = frozenset(
         ".clipboard_read",
         ".clipboard_write",
         ".get_table_info",
+        ".scroll_to_item",
     }
 )
 

@@ -97,6 +97,7 @@ class DesktopAction(StrEnum):
     DESELECT_ITEM = "deselect_item"
     ADD_TO_SELECTION = "add_to_selection"
     SCROLL = "scroll"
+    SCROLL_TO_ITEM = "scroll_to_item"
     GET_TEXT = "get_text"
     TOGGLE = "toggle"
     EXPAND = "expand"

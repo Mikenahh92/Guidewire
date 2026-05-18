@@ -1493,6 +1493,113 @@ class LinuxBackend(DesktopBackend):
         self._desktop = None
         self._disposed = True
 
+    def scroll_to_item(
+        self,
+        container: NativeHandle,
+        *,
+        item_name: str | None = None,
+        item_index: int | None = None,
+        max_retries: int = 10,
+    ) -> NativeHandle | None:
+        """Scroll a virtualized list to bring an item into view (GW-052).
+
+        Uses a best-effort scroll-and-retry approach since AT-SPI does not
+        have a standardized virtualization API.  Iterates visible children
+        looking for the target, scrolling down when not found, up to
+        *max_retries* times.
+
+        Args:
+            container: Native handle for the list/container element.
+            item_name: Accessible name of the target item (case-insensitive
+                substring match).
+            item_index: Zero-based index of the target item.
+            max_retries: Max scroll iterations (default 10).
+
+        Returns:
+            Native handle for the found item, or ``None``.
+
+        Raises:
+            ElementNotFoundError: If the container is invalid.
+            ActionNotSupportedError: If neither item_name nor item_index
+                is provided.
+        """
+        if self._disposed:
+            raise StaleElementReferenceError("LinuxBackend has been disposed")
+
+        accessible = self._unwrap_element(container)
+
+        if item_name is None and item_index is None:
+            raise ActionNotSupportedError(
+                "scroll_to_item requires either item_name or item_index"
+            )
+
+        # Track seen names to detect when scrolling stops producing new items
+        seen_names: set[str] = set()
+
+        for attempt in range(max_retries):
+            try:
+                child_count = accessible.childCount
+                visible_index = 0
+                new_names: set[str] = set()
+
+                for i in range(child_count):
+                    try:
+                        child = accessible.getChildAtIndex(i)
+                        if child is None:
+                            continue
+
+                        child_name = child.get_name() or ""
+                        new_names.add(child_name)
+
+                        # Match by name
+                        if item_name is not None and child_name:
+                            if item_name.lower() in child_name.lower():
+                                return NativeHandle(child)
+
+                        # Match by index
+                        if item_index is not None and visible_index == item_index:
+                            return NativeHandle(child)
+
+                        visible_index += 1
+                    except Exception:
+                        logger.debug(
+                            "Skipping inaccessible child %d in scroll_to_item", i
+                        )
+                        continue
+
+                # If no new items appeared, stop scrolling
+                if new_names and new_names.issubset(seen_names):
+                    logger.debug(
+                        "No new items after scroll at attempt %d, stopping", attempt
+                    )
+                    break
+                seen_names.update(new_names)
+
+            except Exception:
+                logger.debug("Error scanning children, attempt %d", attempt)
+
+            # Scroll down to reveal more items
+            try:
+                action_iface = accessible.get_action()
+                if action_iface is not None:
+                    # Try scrollDown action first
+                    scrolled = False
+                    for i in range(action_iface.get_n_actions()):
+                        action_name = action_iface.get_action_name(i)
+                        if action_name in ("scrollDown", "scroll"):
+                            action_iface.doAction(i)
+                            scrolled = True
+                            break
+                    if not scrolled:
+                        break  # No scroll action available
+                else:
+                    break  # No action interface, can't scroll
+            except Exception:
+                logger.debug("Scroll action failed on attempt %d", attempt)
+                break
+
+        return None
+
     # -- Window state management (GW-055) ------------------------------------
 
     def _require_accessible(self, window: NativeHandle) -> Any:

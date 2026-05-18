@@ -26,6 +26,7 @@ class TestDesktopAction:
             "expand",
             "collapse",
             "scroll",
+            "scroll_to_item",
             "increment",
             "decrement",
             "open_menu",
@@ -37,11 +38,11 @@ class TestDesktopAction:
             assert action == name
 
     def test_action_count(self) -> None:
-        """DesktopAction has exactly 16 members."""
+        """DesktopAction has exactly 17 members."""
         import typing
 
         args = typing.get_args(DesktopAction)
-        assert len(args) == 16
+        assert len(args) == 17
 
     def test_invalid_action_rejected_by_mypy(self) -> None:
         """Non-member strings are not DesktopAction at type-check time.
@@ -417,6 +418,7 @@ class TestActionCompleteness:
             "expand",
             "collapse",
             "scroll",
+            "scroll_to_item",
             "increment",
             "decrement",
             "open_menu",
@@ -428,4 +430,4 @@ class TestActionCompleteness:
         import typing
 
         args = typing.get_args(DesktopAction)
-        assert len(args) == 16
+        assert len(args) == 17

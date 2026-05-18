@@ -42,6 +42,7 @@ DesktopAction = Literal[
     "expand",
     "collapse",
     "scroll",
+    "scroll_to_item",
     "increment",
     "decrement",
     "open_menu",
@@ -195,6 +196,7 @@ class NormalizedElement:
     table_column: int | None = None
     tree_level: int | None = None
     selection_state: str | None = None
+    is_virtualized: bool | None = None
 
     # --- Convenience helpers ------------------------------------------------
 
@@ -258,6 +260,8 @@ class NormalizedElement:
             result["tree_level"] = self.tree_level
         if self.selection_state is not None:
             result["selection_state"] = self.selection_state
+        if self.is_virtualized is not None:
+            result["is_virtualized"] = self.is_virtualized
         children = self.children
         if children:
             result["children"] = [c.to_dict() for c in children]

@@ -160,6 +160,7 @@ def normalize_element(
     table_column: int | None = None,
     tree_level: int | None = None,
     selection_state: str | None = None,
+    is_virtualized: bool | None = None,
 ) -> NormalizedElement:
     """Build a :class:`NormalizedElement` from raw platform properties.
 
@@ -190,6 +191,8 @@ def normalize_element(
         tree_level: Zero-based nesting depth for tree items.
         selection_state: Current selection state string
             (e.g. ``"selected"``, ``"unselected"``, ``"partial"``).
+        is_virtualized: Whether the element belongs to a virtualized
+            container where not all items are materialized.
 
     Returns:
         A fully-populated :class:`NormalizedElement`.
@@ -224,4 +227,5 @@ def normalize_element(
         table_column=table_column,
         tree_level=tree_level,
         selection_state=selection_state,
+        is_virtualized=is_virtualized,
     )
